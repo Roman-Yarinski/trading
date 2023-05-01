@@ -34,6 +34,7 @@
   },
   "dependencies": {},
   "devDependencies": {
+    "@chainlink/contracts": "^0.6.1",
     "@openzeppelin/contractsV3": "npm:@openzeppelin/contracts@3.4.1",
     "@openzeppelin/contractsV4": "npm:@openzeppelin/contracts",
     "@ethersproject/abi": "^5.4.7",
