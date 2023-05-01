@@ -32,7 +32,14 @@ function typedNamedAccounts<T>(namedAccounts: { [key in string]: T }) {
 
 const config: HardhatUserConfig = {
   solidity: {
-    version: "0.8.12",
+    compilers: [
+      {
+        version: "0.8.12",
+      },
+      {
+        version: "0.7.6",
+      },
+    ],
     settings: {
       optimizer: {
         enabled: true,

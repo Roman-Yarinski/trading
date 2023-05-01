@@ -32,10 +32,10 @@
     "verify:bsc": "NODE_APP_INSTANCE=bsc hardhat verify-by-name --network bsc --contracts",
     "verify:bscTestnet": "NODE_APP_INSTANCE=bscTestnet hardhat verify-by-name --network bscTestnet --contracts"
   },
-  "dependencies": {
-    "@openzeppelin/contracts": "^4.8.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "@openzeppelin/contractsV3": "npm:@openzeppelin/contracts@3.4.1",
+    "@openzeppelin/contractsV4": "npm:@openzeppelin/contracts",
     "@ethersproject/abi": "^5.4.7",
     "@ethersproject/providers": "^5.4.7",
     "@nomicfoundation/hardhat-chai-matchers": "^1.0.0",
@@ -50,6 +50,8 @@
     "@types/node": ">=12.0.0",
     "@typescript-eslint/eslint-plugin": "^5.47.1",
     "@typescript-eslint/parser": "^5.47.1",
+    "@uniswap/v3-core": "^1.0.1",
+    "@uniswap/v3-periphery": "^1.4.3",
     "chai": "^4.2.0",
     "config": "^3.3.8",
     "eslint": "^8.30.0",
