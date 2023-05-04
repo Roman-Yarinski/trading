@@ -35,8 +35,6 @@
   "dependencies": {},
   "devDependencies": {
     "@chainlink/contracts": "^0.6.1",
-    "@openzeppelin/contractsV3": "npm:@openzeppelin/contracts@3.4.1",
-    "@openzeppelin/contractsV4": "npm:@openzeppelin/contracts",
     "@ethersproject/abi": "^5.4.7",
     "@ethersproject/providers": "^5.4.7",
     "@nomicfoundation/hardhat-chai-matchers": "^1.0.0",
@@ -44,6 +42,8 @@
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",
     "@nomiclabs/hardhat-ethers": "^2.0.0",
     "@nomiclabs/hardhat-etherscan": "^3.0.0",
+    "@openzeppelin/contractsV3": "npm:@openzeppelin/contracts@3.4.1",
+    "@openzeppelin/contractsV4": "npm:@openzeppelin/contracts",
     "@typechain/ethers-v5": "^10.1.0",
     "@typechain/hardhat": "^6.1.2",
     "@types/chai": "^4.2.0",
