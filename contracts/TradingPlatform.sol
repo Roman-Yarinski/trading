@@ -89,6 +89,9 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         _uniswapHelperV3 = uniswapHelperV3_;
     }
 
+    /**
+     * @notice Returns a address of uniswapHelperV3
+     */
     function getSwapHelper() external view returns (address) {
         return _uniswapHelperV3;
     }
