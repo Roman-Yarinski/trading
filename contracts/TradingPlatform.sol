@@ -13,14 +13,13 @@ import "@openzeppelin/contractsV4/access/AccessControlEnumerable.sol";
 /**
  * @title The contract implements the token trading platform
  */
-contract TradingPlatform is AutomationCompatibleInterface {
+contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerable {
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    bytes32 public constant SWAPPER_ROLE = keccak256("SWAPPER_ROLE");
     uint32 public constant PRECISION = 1000000;
     uint32 public constant MAX_ITERATIONS = 1000;
 
@@ -33,8 +32,6 @@ contract TradingPlatform is AutomationCompatibleInterface {
     address _uniswapHelperV3;
 
     EnumerableSet.AddressSet private _tokensWhiteList;
-    EnumerableSet.AddressSet private _validatorsWhiteList; // TODO: remove ? useless
-
     EnumerableSet.UintSet private _activeOrders;
     EnumerableSet.UintSet private _canceledOrders; // TODO: remove ? useless
 
@@ -78,12 +75,26 @@ contract TradingPlatform is AutomationCompatibleInterface {
     event OrderCreated(uint256 orderId, address userAddress);
     event OrderExecuted(uint256 orderId, address validator);
     event Withdrawed(address operator, address token, uint256 amount);
+    event TokenAdded(address token);
+    event TokenRemoved(address token);
+    event OrdersBounded(uint256[] leftOrders, uint256[] rightOrders);
 
     /**
      * @notice TODO:
      */
-    constructor(address uniswapHelperV3_) {
+    constructor(address uniswapHelperV3_, address admin) {
+        require(uniswapHelperV3_ != address(0), "UniswapHelperV3 zero address");
+        require(admin != address(0), "Admin zero address");
+        _setupRole(ADMIN_ROLE, admin);
         _uniswapHelperV3 = uniswapHelperV3_;
+    }
+
+    function getSwapHelper() external view returns (address) {
+        return _uniswapHelperV3;
+    }
+
+    function getTokenStatus(address token) external view returns (bool) {
+        return _tokensWhiteList.contains(token);
     }
 
     /**
@@ -102,12 +113,12 @@ contract TradingPlatform is AutomationCompatibleInterface {
     }
 
     /**
-     * @notice Returns a payment by index
-     * @param tokenId Index in array payments token
+     * @notice Returns a active order by index
+     * @param itemId Index in active orders list
      */
-    function activeOrderId(uint256 tokenId) external view returns (uint256) {
-        require(tokenId < _activeOrders.length(), "VaultV2: Invalid token id");
-        return _activeOrders.at(tokenId);
+    function activeOrderId(uint256 itemId) external view returns (uint256) {
+        require(itemId < _activeOrders.length(), "VaultV2: Invalid token id");
+        return _activeOrders.at(itemId);
     }
 
     /**
@@ -124,13 +135,31 @@ contract TradingPlatform is AutomationCompatibleInterface {
         for (uint256 i = 0; i < ordersIds.length; i++) ordersIds[i] = _activeOrders.at(offset + i);
     }
 
+    function addTokensToWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            require(tokens[i] != address(0), "Token zero address check");
+            if (_tokensWhiteList.contains(tokens[i])) continue;
+            _tokensWhiteList.add(tokens[i]);
+            emit TokenAdded(tokens[i]);
+        }
+    }
+
+    function removeTokensFromWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (!_tokensWhiteList.contains(tokens[i])) continue;
+            _tokensWhiteList.remove(tokens[i]);
+            emit TokenRemoved(tokens[i]);
+        }
+    }
+
     function createOrder(Order memory order) external returns (uint256 orderId) {
         // TODO: add checks
+        require(order.userAddress == msg.sender, "Wrong user address");
         require(order.baseToken != address(0), "Zero address check");
         require(order.targetToken != address(0), "Zero address check");
         require(order.baseToken != order.targetToken, "Tokens must be different");
         require(order.baseAmount > 0, "Amount in must be greater than 0");
-        require(order.slippage > 0 && order.slippage < 50, "Unsafe slippage");
+        require(order.slippage > 0 && order.slippage < 50000, "Unsafe slippage");
         require(order.aimTargetTokenAmount > 0, "Aim amount must be greater than 0");
         require(order.expiration > block.timestamp, "Wrong expiration date");
         require(
@@ -171,6 +200,18 @@ contract TradingPlatform is AutomationCompatibleInterface {
         return orderId;
     }
 
+    function getUserBalance(address user, address token) external view returns (uint256) {
+        return balances[user][token];
+    }
+
+    function getOrderCounter() external view returns (uint256) {
+        return orderCounter.current();
+    }
+
+    function getOrderInfo(uint256 orderId) external view returns (Order memory order) {
+        return orderInfo[orderId];
+    }
+
     function deposit(address token, uint256 amount) external returns (bool) {
         require(_tokensWhiteList.contains(token), "Token not allowed");
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -182,22 +223,24 @@ contract TradingPlatform is AutomationCompatibleInterface {
     function withdraw(address token, uint256 amount) external returns (bool) {
         require(balances[msg.sender][token] >= amount, "Amount exceed balance");
         balances[msg.sender][token] -= amount;
+        IERC20(token).safeTransfer(msg.sender, amount);
         emit Withdrawed(msg.sender, token, amount);
         return true;
     }
 
     function boundOrders(uint256[] calldata leftOrders, uint256[] calldata rightOrders) external {
         require(leftOrders.length == rightOrders.length && leftOrders.length > 0, "Non-compatible lists");
-
         for (uint256 i = 0; i < leftOrders.length; i++) {
             require(
                 orderInfo[leftOrders[i]].userAddress == msg.sender &&
                     orderInfo[rightOrders[i]].userAddress == msg.sender,
                 "Not your order"
             );
+            require(leftOrders[i] != rightOrders[i], "Can't bound an order to yourself");
             orderInfo[leftOrders[i]].boundOrders.push(rightOrders[i]);
             orderInfo[rightOrders[i]].boundOrders.push(leftOrders[i]);
         }
+        emit OrdersBounded(leftOrders, rightOrders);
     }
 
     function shouldRebalance() public view returns (uint256[] memory) {
