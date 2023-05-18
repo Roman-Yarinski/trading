@@ -96,6 +96,29 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return _uniswapHelperV3;
     }
 
+    /**
+     * @notice Returns a address of feeRecipient
+     */
+    function getFeeRecipient() external view returns (address) {
+        return feeRecipient;
+    }
+
+    /**
+     * @notice Returns a address of feeRecipient
+     */
+    function getProtocolFee() external view returns (uint32) {
+        return protocolFee;
+    }
+
+    /**
+     * @notice Returns a address of feeRecipient
+     */
+    function setProtocolFee(uint32 newProtocolFee) external {
+        // TODO: add role
+        require(newProtocolFee < PRECISION);
+        protocolFee = newProtocolFee;
+    }
+
     function getTokenStatus(address token) external view returns (bool) {
         return _tokensWhiteList.contains(token);
     }
@@ -248,7 +271,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
     function shouldRebalance() public view returns (uint256[] memory) {
         //get Active Orders
-        uint256 ordersCount = _activeOrders.length();
+        uint256 ordersCount = _activeOrders.length(); // TODO: -1 ?
         uint256 to = MAX_ITERATIONS;
         if (ordersCount < to) to = ordersCount;
         uint256[] memory ordersIds = new uint256[](to);
@@ -294,20 +317,13 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             }
             executeOrder(ordersIds[i]);
         }
+        return true;
     }
 
     function executeOrder(uint256 orderId) internal {
         Order memory order = orderInfo[orderId];
-        // update User Balance
-        // require(
-        //     balances[order.userAddress][order.baseToken] >= order.baseAmount,
-        //     "TradingPlatform: amount exceed user balance"
-        // ); // TODO: remove late ?
 
-        if (balances[order.userAddress][order.baseToken] < order.baseAmount) {
-            return;
-        }
-
+        IERC20(order.baseToken).approve(_uniswapHelperV3, order.baseAmount);
         uint256 amountOut = ISwapHelperUniswapV3(_uniswapHelperV3).swap( // TODO: add user slippage
             order.userAddress,
             order.baseToken, // ETH
@@ -318,7 +334,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
         uint256 feeAmount = calculateFee(amountOut);
 
-        require(order.minTargetTokenAmount < amountOut, "Unfair exchange"); // order.minTargetTokenAmount < amountOut - feeAmount ?
+        require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // order.minTargetTokenAmount < amountOut - feeAmount ?
 
         // FEE
         balances[feeRecipient][order.targetToken] += feeAmount;
@@ -364,7 +380,11 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         //     _secondsAgoDefault // TWA
         // ); // ETH_PRICE in USDC
 
-        if (order.action == Action.LOSS && expectedAmountOut <= order.aimTargetTokenAmount) return true;
+        if (
+            order.action == Action.LOSS &&
+            expectedAmountOut <= order.aimTargetTokenAmount &&
+            expectedAmountOut > order.minTargetTokenAmount
+        ) return true;
         if (order.action == Action.PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) return true;
         if (order.action == Action.MOVING_PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) return true; // TODO: add logic for MOVING_PROFIT
 
