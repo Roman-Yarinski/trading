@@ -21,7 +21,22 @@
     "TOKEN": "TOKEN",
     "GAS_PRICE_API": "GAS_PRICE_API"
   },
-  "DEPLOY": {},
+  "DEPLOY": {
+    "TOKEN": {
+      "DECIMALS": "DECIMALS",
+      "SUPPLY": "SUPPLY"
+    },
+    "TRADING_PLATFORM": {
+      "ADMIN": "ADMIN",
+      "SWAP_HELPER": "SWAP_HELPER"
+    },
+    "SWAP_HELPER": {
+      "SWAP_ROUTER": "SWAP_ROUTER",
+      "FACTORY": "FACTORY",
+      "SLIPPAGE": "SLIPPAGE",
+      "SECONDS_AGO_DEFAULT": "SECONDS_AGO_DEFAULT"
+    }
+  },
   "SCRIPTS": {
     "OPERATOR_KEY": "OPERATOR_KEY"
   }

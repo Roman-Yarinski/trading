@@ -30,7 +30,22 @@ declare module "config" {
   export const DEPLOY: Deploy;
   export const SCRIPTS: Scripts;
 
-  export interface Deploy {}
+  export interface Deploy {
+    TOKEN: {
+      readonly DECIMALS: number;
+      readonly SUPPLY: number | string;
+    };
+    TRADING_PLATFORM: {
+      ADMIN: string | null;
+      SWAP_HELPER: string | null;
+    };
+    SWAP_HELPER: {
+      SWAP_ROUTER: string;
+      FACTORY: string;
+      SLIPPAGE: number;
+      SECONDS_AGO_DEFAULT: number;
+    };
+  }
 
   export interface Scripts {
     OPERATOR_KEY: string;
