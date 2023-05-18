@@ -16,6 +16,7 @@ declare module "config" {
   export interface Fork {
     readonly FORK_PROVIDER_URI: string;
     readonly FORK_ENABLED: boolean;
+    readonly BLOCK_NUMBER: number;
   }
 
   export const INFURA_KEY: string;

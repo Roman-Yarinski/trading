@@ -24,27 +24,41 @@ import {
 
 const { OPERATOR_KEY } = SCRIPTS;
 const { GAS_PRICE_NODE, LOGGING } = NODE;
-const { FORK_PROVIDER_URI, FORK_ENABLED } = NODE.FORK;
+const { FORK_PROVIDER_URI, FORK_ENABLED, BLOCK_NUMBER } = NODE.FORK;
 
 function typedNamedAccounts<T>(namedAccounts: { [key in string]: T }) {
   return namedAccounts;
 }
 
+const UNISWAP_SETTING = {
+  version: "0.7.6",
+  settings: {
+    optimizer: {
+      enabled: true,
+      runs: 2_000,
+    },
+  },
+};
+
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
       {
-        version: "0.8.12",
+        version: "0.8.12", // or your other versions
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 200,
+          },
+        },
       },
-      {
-        version: "0.7.6",
-      },
+
+      UNISWAP_SETTING,
     ],
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
+    overrides: {
+      "@uniswap/v3-core/contracts/libraries/FullMath.sol": UNISWAP_SETTING,
+      "@uniswap/v3-core/contracts/libraries/TickMath.sol": UNISWAP_SETTING,
+      "@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol": UNISWAP_SETTING,
     },
   },
   typechain: {
@@ -54,9 +68,11 @@ const config: HardhatUserConfig = {
     hardhat: {
       gasPrice: GAS_PRICE_NODE,
       loggingEnabled: LOGGING,
+      chainId: 31337,
       forking: {
         url: FORK_PROVIDER_URI,
         enabled: FORK_ENABLED,
+        blockNumber: BLOCK_NUMBER,
       },
     },
     localhost: {

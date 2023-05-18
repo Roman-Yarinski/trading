@@ -149,7 +149,8 @@ slither . --triage
     "LOGGING": true,
     "FORK": {
       "FORK_PROVIDER_URI": "",
-      "FORK_ENABLED": false
+      "FORK_ENABLED": true,
+      "BLOCK_NUMBER": 17268128
     }
   },
   "GAS_REPORTER": {
