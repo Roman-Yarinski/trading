@@ -38,7 +38,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     mapping(uint256 => Order) private orderInfo;
 
     mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
-    mapping(address => EnumerableSet.UintSet) private userOrders; // All orders for user TODO: array with ids
+    mapping(address => uint256[]) private userOrders; // All orders for user TODO: array with ids
 
     // mapping(address => uint256) private tokenIds; // Token address to token id in array // TODO: remove ? useless
     Counters.Counter private tokenCounter; // How many tokens we are supported
@@ -210,7 +210,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         }
 
         _activeOrders.add(orderId);
-        userOrders[msg.sender].add(orderId);
+        userOrders[msg.sender].push(orderId);
 
         orderInfo[orderId] = order;
 
