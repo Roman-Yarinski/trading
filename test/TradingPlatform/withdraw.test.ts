@@ -1,78 +1,21 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, ContractInterface, BytesLike, ContractTransaction } from "ethers";
+import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { standardPrepare } from "@test-utils";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { MockERC20, TradingPlatform } from "@contracts";
-import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
+import { BigNumber, ContractTransaction } from "ethers";
 
-import {
-  abi as FACTORY_ABI,
-  bytecode as FACTORY_BYTECODE,
-} from "@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json";
-import {
-  abi as ROUTER_ABI,
-  bytecode as ROUTER_BYTECODE,
-} from "@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json";
-
-const SECONDS_AGO = BigNumber.from(60);
-const SLIPPAGE = BigNumber.from(10000); // 1% (100% = 1000000)
-
-const totalSupply = ethers.utils.parseUnits("1000");
 const baseAmount = ethers.utils.parseUnits("100");
 
 describe("Method: withdraw", () => {
-  let deployer: SignerWithAddress;
-  let admin: SignerWithAddress;
-
   async function deployTradingPlatform() {
-    [deployer, admin] = await ethers.getSigners();
+    const [deployer, admin] = await ethers.getSigners();
+    const standardParams = await standardPrepare(deployer, admin);
+    await standardParams.baseToken.approve(standardParams.tradingPlatform.address, baseAmount);
+    await standardParams.tradingPlatform.deposit(standardParams.baseToken.address, baseAmount);
 
-    const FactoryInstance = new ethers.ContractFactory(
-      FACTORY_ABI as ContractInterface,
-      FACTORY_BYTECODE as BytesLike
-    );
-    const RouterInstance = new ethers.ContractFactory(
-      ROUTER_ABI as ContractInterface,
-      ROUTER_BYTECODE as BytesLike
-    );
-    const TokenInstance = await ethers.getContractFactory("MockERC20");
-    const WEthInstance = await ethers.getContractFactory("MockWETH");
-    const TradingPlatformInstance = await ethers.getContractFactory("TradingPlatform");
-    const SwapHelperV3Instance = await ethers.getContractFactory("SwapHelperUniswapV3");
-
-    const factory = await FactoryInstance.connect(deployer).deploy();
-
-    const WETH = await WEthInstance.connect(deployer).deploy();
-    const router = await RouterInstance.connect(deployer).deploy(factory.address, WETH.address);
-
-    const swapHelperContract = await SwapHelperV3Instance.connect(deployer).deploy(
-      router.address,
-      factory.address,
-      SLIPPAGE,
-      SECONDS_AGO
-    );
-
-    const baseToken = await TokenInstance.deploy(18, totalSupply);
-    const targetToken = await TokenInstance.deploy(18, totalSupply);
-    const randomToken = await TokenInstance.deploy(18, totalSupply);
-
-    const tradingPlatform = await TradingPlatformInstance.deploy(swapHelperContract.address, admin.address);
-    await tradingPlatform.connect(admin).addTokensToWhitelist([baseToken.address, targetToken.address]);
-
-    const adminRole = await swapHelperContract.ADMIN_ROLE();
-    await swapHelperContract.grantRole(adminRole, admin.address);
-    await baseToken.approve(tradingPlatform.address, totalSupply);
-    await tradingPlatform.deposit(baseToken.address, baseAmount);
-
-    return {
-      swapHelperContract,
-      tradingPlatform,
-      factory,
-      router,
-      randomToken,
-      baseToken,
-      targetToken,
-    };
+    return standardParams;
   }
 
   describe("When one of parameters is incorrect", () => {
@@ -86,6 +29,7 @@ describe("Method: withdraw", () => {
 
   describe("When all parameters correct", () => {
     let result: ContractTransaction;
+    let deployer: SignerWithAddress;
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
     let userBalanceBefore: BigNumber;
@@ -93,6 +37,7 @@ describe("Method: withdraw", () => {
 
     before(async () => {
       const deploy = await loadFixture(deployTradingPlatform);
+      deployer = deploy.deployer;
       tradingPlatform = deploy.tradingPlatform;
       baseToken = deploy.baseToken;
       userBalanceBefore = await tradingPlatform.getUserBalance(deployer.address, baseToken.address);

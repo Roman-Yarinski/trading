@@ -1,14 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, ContractFactory } from "ethers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { BigNumber, ContractFactory } from "ethers";
 import { SwapHelperUniswapV3, TradingPlatform } from "@contracts";
-import { ZERO_ADDRESS, getSigner } from "@test-utils";
-
-const FACTORY = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
-const SWAP_ROUTER = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-const SLIPPAGE = BigNumber.from(10000); // 1% (100% = 1000000)
-const SECONDS_AGO = BigNumber.from(60);
+import { FACTORY, SWAP_ROUTER, SLIPPAGE, SECONDS_AGO, ZERO_ADDRESS, getSigner } from "@test-utils";
 
 describe("Method: constructor", () => {
   let deployer: string;

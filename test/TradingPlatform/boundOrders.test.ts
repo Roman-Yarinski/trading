@@ -1,109 +1,59 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { BigNumber, ContractTransaction, ContractInterface, BytesLike } from "ethers";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { TradingPlatform } from "@contracts";
 import { loadFixture } from "@nomicfoundation/hardhat-network-helpers";
-import {
-  abi as FACTORY_ABI,
-  bytecode as FACTORY_BYTECODE,
-} from "@uniswap/v3-core/artifacts/contracts/UniswapV3Factory.sol/UniswapV3Factory.json";
-import {
-  abi as ROUTER_ABI,
-  bytecode as ROUTER_BYTECODE,
-} from "@uniswap/v3-periphery/artifacts/contracts/SwapRouter.sol/SwapRouter.json";
-
-const SECONDS_AGO = BigNumber.from(60);
-const PAIR_FEE = 5000;
-const SLIPPAGE = BigNumber.from(10000); // 1% (100% = 1000000)
-
-const totalSupply = ethers.utils.parseUnits("1000");
-const baseAmount = ethers.utils.parseUnits("100");
-
-enum Action {
-  LOSS,
-  PROFIT,
-  DCA,
-  MOVING_PROFIT,
-}
+import { TradingPlatform } from "@contracts";
+import { ContractTransaction } from "ethers";
+import { baseAmount, Action, standardPrepare, createOrder } from "@test-utils";
 
 describe("Method: boundOrders", () => {
-  let deployer: SignerWithAddress;
-  let admin: SignerWithAddress;
-  let user: SignerWithAddress;
-
   async function deployTradingPlatform() {
-    [deployer, admin, user] = await ethers.getSigners();
+    const [deployer, admin, user] = await ethers.getSigners();
 
-    const FactoryInstance = new ethers.ContractFactory(
-      FACTORY_ABI as ContractInterface,
-      FACTORY_BYTECODE as BytesLike
+    const standardParams = await standardPrepare(deployer, admin);
+    await standardParams.baseToken.transfer(user.address, baseAmount);
+
+    await createOrder(
+      deployer,
+      standardParams.tradingPlatform,
+      standardParams.baseToken,
+      standardParams.targetToken,
+      baseAmount,
+      ethers.utils.parseUnits("50"),
+      ethers.utils.parseUnits("45"),
+      Action.PROFIT
     );
-    const RouterInstance = new ethers.ContractFactory(
-      ROUTER_ABI as ContractInterface,
-      ROUTER_BYTECODE as BytesLike
+    await createOrder(
+      deployer,
+      standardParams.tradingPlatform,
+      standardParams.baseToken,
+      standardParams.targetToken,
+      baseAmount,
+      ethers.utils.parseUnits("50"),
+      ethers.utils.parseUnits("45"),
+      Action.PROFIT
     );
-    const TokenInstance = await ethers.getContractFactory("MockERC20");
-    const WEthInstance = await ethers.getContractFactory("MockWETH");
-    const TradingPlatformInstance = await ethers.getContractFactory("TradingPlatform");
-    const SwapHelperV3Instance = await ethers.getContractFactory("SwapHelperUniswapV3");
-
-    const factory = await FactoryInstance.connect(deployer).deploy();
-
-    const WETH = await WEthInstance.connect(deployer).deploy();
-    const router = await RouterInstance.connect(deployer).deploy(factory.address, WETH.address);
-
-    const swapHelperContract = await SwapHelperV3Instance.connect(deployer).deploy(
-      router.address,
-      factory.address,
-      SLIPPAGE,
-      SECONDS_AGO
+    await createOrder(
+      deployer,
+      standardParams.tradingPlatform,
+      standardParams.baseToken,
+      standardParams.targetToken,
+      baseAmount,
+      ethers.utils.parseUnits("50"),
+      ethers.utils.parseUnits("45"),
+      Action.PROFIT
+    );
+    await createOrder(
+      user,
+      standardParams.tradingPlatform,
+      standardParams.baseToken,
+      standardParams.targetToken,
+      baseAmount,
+      ethers.utils.parseUnits("50"),
+      ethers.utils.parseUnits("45"),
+      Action.PROFIT
     );
 
-    const baseToken = await TokenInstance.deploy(18, totalSupply);
-    const targetToken = await TokenInstance.deploy(18, totalSupply);
-    const randomToken = await TokenInstance.deploy(18, totalSupply);
-
-    const tradingPlatform = await TradingPlatformInstance.deploy(swapHelperContract.address, admin.address);
-    await tradingPlatform.connect(admin).addTokensToWhitelist([baseToken.address, targetToken.address]);
-    await baseToken.mint(user.address, totalSupply);
-    await baseToken.approve(tradingPlatform.address, totalSupply);
-    await baseToken.connect(user).approve(tradingPlatform.address, totalSupply);
-
-    const adminRole = await swapHelperContract.ADMIN_ROLE();
-    await swapHelperContract.grantRole(adminRole, admin.address);
-
-    const order: TradingPlatform.OrderStruct = {
-      userAddress: deployer.address,
-      baseToken: baseToken.address,
-      targetToken: targetToken.address,
-      pairFee: PAIR_FEE,
-      slippage: SLIPPAGE,
-      baseAmount: baseAmount,
-      aimTargetTokenAmount: ethers.utils.parseUnits("50"),
-      minTargetTokenAmount: ethers.utils.parseUnits("45"),
-      expiration: Math.floor(Date.now() / 1000) + 60 * 60,
-      boundOrders: [],
-      action: Action.LOSS,
-    };
-
-    await tradingPlatform.createOrder(order);
-    await tradingPlatform.createOrder(order);
-    await tradingPlatform.createOrder(order);
-    const userOrder = { ...order };
-    userOrder.userAddress = user.address;
-    await tradingPlatform.connect(user).createOrder(userOrder);
-
-    return {
-      swapHelperContract,
-      tradingPlatform,
-      factory,
-      router,
-      order,
-      randomToken,
-      baseToken,
-      targetToken,
-    };
+    return standardParams;
   }
 
   describe("When one of parameters is incorrect", () => {
