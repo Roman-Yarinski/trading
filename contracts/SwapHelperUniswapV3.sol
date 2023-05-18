@@ -53,6 +53,14 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         amountOut = OracleLibrary.getQuoteAtTick(tick, amountIn, tokenIn, tokenOut);
     }
 
+    function sortTokens(address tokenA, address tokenB) external pure returns (address token0, address token1) {
+        if (tokenA < tokenB) {
+            return (tokenA, tokenB);
+        } else {
+            return (tokenB, tokenA);
+        }
+    }
+
     /**
      * @notice Returns a seconds ago default param
      */
@@ -97,7 +105,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         address tokenOut,
         uint128 amountIn,
         uint24 fee
-    ) external override onlyRole(SWAPPER_ROLE) returns (uint256 amountOut) {
+    ) external override returns (uint256 amountOut) {
         require(beneficiary != address(0), "SwapHelperV3: beneficiary is zero address");
         require(tokenIn != address(0), "SwapHelperV3: tokenIn is zero address");
         require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");
@@ -107,6 +115,42 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         token.safeApprove(address(swapRouter), amountIn);
         uint256 amountOutEstimated = getAmountOut(tokenIn, tokenOut, amountIn, fee, _secondsAgoDefault);
         uint256 amountOutMinimum = amountOutEstimated - ((amountOutEstimated * _slippage) / PRECISION);
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
+            fee: fee,
+            recipient: beneficiary,
+            deadline: block.timestamp,
+            amountIn: amountIn,
+            amountOutMinimum: amountOutMinimum,
+            sqrtPriceLimitX96: 0
+        });
+        amountOut = swapRouter.exactInputSingle(params);
+        emit Swapped(beneficiary, tokenIn, tokenOut, amountIn, amountOut);
+    }
+
+    /**
+     * @dev See {ISwapHelperV3}
+     */
+    function swapWithCustomSlippage(
+        address beneficiary,
+        address tokenIn,
+        address tokenOut,
+        uint128 amountIn,
+        uint24 fee,
+        uint256 slippageForSwap
+    ) external returns (uint256 amountOut) {
+        require(beneficiary != address(0), "SwapHelperV3: beneficiary is zero address");
+        require(tokenIn != address(0), "SwapHelperV3: tokenIn is zero address");
+        require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");
+        require(amountIn > 0, "SwapHelperV3: amountIn is not positive");
+        require(slippageForSwap > 0, "SwapHelperV3: zero slippage");
+        require(slippageForSwap < PRECISION, "SwapHelperV3: wrong slippage");
+        IERC20 token = IERC20(tokenIn);
+        token.safeTransferFrom(msg.sender, address(this), amountIn);
+        token.safeApprove(address(swapRouter), amountIn);
+        uint256 amountOutEstimated = getAmountOut(tokenIn, tokenOut, amountIn, fee, _secondsAgoDefault);
+        uint256 amountOutMinimum = amountOutEstimated - ((amountOutEstimated * slippageForSwap) / PRECISION);
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: tokenIn,
             tokenOut: tokenOut,
