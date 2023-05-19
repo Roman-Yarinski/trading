@@ -6,8 +6,7 @@ import { SwapHelperUniswapV3, TradingPlatform } from "@contracts";
 import { FACTORY, SWAP_ROUTER, SLIPPAGE, SECONDS_AGO, ZERO_ADDRESS, getSigner } from "@test-utils";
 
 describe("Method: constructor", () => {
-  let deployer: string;
-  let admin: string;
+  let deployer: string, admin: string;
   let swapHelperContract: SwapHelperUniswapV3;
   let TradingPlatformInstance: ContractFactory;
   let tradingPlatform: TradingPlatform;
