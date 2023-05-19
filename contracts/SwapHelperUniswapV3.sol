@@ -145,7 +145,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");
         require(amountIn > 0, "SwapHelperV3: amountIn is not positive");
         require(slippageForSwap > 0, "SwapHelperV3: zero slippage");
-        require(slippageForSwap < PRECISION, "SwapHelperV3: wrong slippage");
+        require(slippageForSwap < PRECISION, "SwapHelperV3: unsafe slippage");
         IERC20 token = IERC20(tokenIn);
         token.safeTransferFrom(msg.sender, address(this), amountIn);
         token.safeApprove(address(swapRouter), amountIn);
