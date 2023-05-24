@@ -10,6 +10,10 @@ import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Po
 import {SafeERC20, IERC20} from "@openzeppelin/contractsV4/token/ERC20/utils/SafeERC20.sol";
 import {AccessControlEnumerable, EnumerableSet} from "@openzeppelin/contractsV4/access/AccessControlEnumerable.sol";
 
+// TODO:
+// 1. Return funds to user from bound orders
+// 2. DCA can't be bound
+
 /**
  * @title The contract implements the token trading platform
  */
@@ -36,6 +40,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     EnumerableSet.UintSet private _canceledOrders; // TODO: remove ? useless
 
     mapping(uint256 => Order) private orderInfo;
+    mapping(uint256 => uint256) private additionalInformation; // orderId => info  last execution time for DCA || last execution price for trailing
 
     mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
     mapping(address => uint256[]) private userOrders; // All orders for user TODO: array with ids
@@ -49,26 +54,32 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         address baseToken;
         address targetToken;
         uint24 pairFee;
-        uint256 slippage;
+        uint24 slippage;
         uint128 baseAmount;
         uint128 aimTargetTokenAmount;
         uint128 minTargetTokenAmount; // minTargetTokenAmount < aimTargetTokenAmount if sell && minTargetTokenAmount > aimTargetTokenAmount if buy
         uint256 expiration;
         uint256[] boundOrders;
         Action action;
+        bytes data; // additional data for different orders types
     }
 
-    struct TotalToSwap {
-        address tokenAddress;
-        uint256 amountToSell;
-        uint256 amountToBuy;
+    struct TrailingOrderData {
+        uint128 baseAmount; // duplicatecate for calculation
+        uint24 step; // step in percents
+        uint24 fixingPerStep; // amount of base token for fixing on each step
+    }
+
+    struct DCAOrderData {
+        uint128 period; // period of buying
+        uint128 amountPerPeriod; // amount of baseToken for spend per period
     }
 
     enum Action {
         LOSS,
         PROFIT,
         DCA,
-        MOVING_PROFIT
+        TRAILING
     }
 
     event Deposited(address operator, address token, uint256 amount);
@@ -322,33 +333,78 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
     function executeOrder(uint256 orderId) internal {
         Order memory order = orderInfo[orderId];
+        uint128 amountToSwap = order.baseAmount;
 
-        IERC20(order.baseToken).approve(_uniswapHelperV3, order.baseAmount);
-        uint256 amountOut = ISwapHelperUniswapV3(_uniswapHelperV3).swap( // TODO: add user slippage
-            order.userAddress,
-            order.baseToken, // ETH
-            order.targetToken, // USDC
-            order.baseAmount,
-            order.pairFee
-        );
+        if (order.action == Action.TRAILING) {
+            TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
+            uint256 expectedAmountOut = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
+                order.baseToken,
+                order.targetToken,
+                decodedData.baseAmount,
+                order.pairFee,
+                _secondsAgoDefault
+            );
+            uint256 lastBuyingAmountOut = additionalInformation[orderId];
 
-        uint256 feeAmount = calculateFee(amountOut);
-
-        require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // order.minTargetTokenAmount < amountOut - feeAmount ?
-
-        // FEE
-        balances[feeRecipient][order.targetToken] += feeAmount;
-
-        // update user balance
-        balances[order.userAddress][order.targetToken] += amountOut - feeAmount;
-
-        //update active orders set
-        _activeOrders.remove(orderId);
-        if (order.boundOrders.length > 0) {
-            for (uint256 i = 0; i < order.boundOrders.length; i++) {
-                if (_activeOrders.contains(order.boundOrders[i])) _activeOrders.remove(order.boundOrders[i]); // remove all bound orders
+            if (lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step) >= expectedAmountOut) {
+                amountToSwap = decodedData.fixingPerStep;
+                if (amountToSwap > order.baseAmount) {
+                    amountToSwap = order.baseAmount;
+                    _activeOrders.remove(orderId); //update active orders set
+                } else {
+                    // update storage only if this info will be needed in future
+                    additionalInformation[orderId] = expectedAmountOut;
+                    orderInfo[orderId].baseAmount -= amountToSwap;
+                }
+            }
+            if (expectedAmountOut < lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)) {
+                amountToSwap = order.baseAmount;
+                _activeOrders.remove(orderId); //update active orders set
             }
         }
+
+        if (order.action == Action.DCA) {
+            DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
+            amountToSwap = decodedData.amountPerPeriod;
+            if (decodedData.amountPerPeriod > order.baseAmount) {
+                amountToSwap = order.baseAmount;
+                _activeOrders.remove(orderId); //update active orders set
+            } else {
+                // update storage only if this info will be needed in future
+                additionalInformation[orderId] = block.timestamp;
+                orderInfo[orderId].baseAmount -= amountToSwap;
+            }
+        }
+
+        if (order.action == Action.LOSS || order.action == Action.PROFIT) {
+            _activeOrders.remove(orderId); //update active orders set
+            if (order.boundOrders.length > 0) {
+                for (uint256 i = 0; i < order.boundOrders.length; i++) {
+                    if (_activeOrders.contains(order.boundOrders[i])) {
+                        Order memory boundOrder = orderInfo[order.boundOrders[i]];
+                        balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
+                        _activeOrders.remove(order.boundOrders[i]);
+                    } // remove all bound orders and refund tokens to user balance
+                }
+            }
+        }
+
+        IERC20(order.baseToken).approve(_uniswapHelperV3, amountToSwap);
+        uint256 amountOut = ISwapHelperUniswapV3(_uniswapHelperV3).swap( // TODO: add user slippage ?
+            order.userAddress,
+            order.baseToken,
+            order.targetToken,
+            amountToSwap,
+            order.pairFee
+        );
+        uint256 feeAmount = calculateFee(amountOut);
+
+        if (order.action == Action.LOSS || order.action == Action.PROFIT)
+            require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // order.minTargetTokenAmount < amountOut - feeAmount ?
+
+        balances[feeRecipient][order.targetToken] += feeAmount; // write fee
+        balances[order.userAddress][order.targetToken] += amountOut - feeAmount; // update user balance
+
         emit OrderExecuted(orderId, msg.sender);
     }
 
@@ -361,7 +417,33 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
         Order memory order = orderInfo[orderId];
 
-        if (order.action == Action.DCA) return true; // TODO: add logic for DCA
+        if (order.action == Action.DCA) {
+            DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
+            if (decodedData.period + additionalInformation[orderId] >= block.timestamp) return true;
+            return false;
+        }
+
+        if (order.action == Action.TRAILING) {
+            TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
+
+            uint256 expectedAmountOutForTrailing = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
+                order.baseToken,
+                order.targetToken,
+                decodedData.baseAmount,
+                order.pairFee,
+                _secondsAgoDefault
+            );
+
+            uint256 lastBuyingAmountOut = additionalInformation[orderId];
+            if (
+                (lastBuyingAmountOut == 0 && expectedAmountOutForTrailing >= order.aimTargetTokenAmount) ||
+                (lastBuyingAmountOut != 0 &&
+                    (lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step) >=
+                        expectedAmountOutForTrailing ||
+                        expectedAmountOutForTrailing <
+                        lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)))
+            ) return true;
+        }
 
         uint256 expectedAmountOut = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
             order.baseToken, // ETH
@@ -371,27 +453,21 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             _secondsAgoDefault // TWA
         ); // ETH_PRICE in USDC
 
-        // uint128 oneBaseToken = uint128(10 ** IERC20WithDecimals(order.baseToken).decimals()); // TODO: fix this
-        // uint256 price = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
-        //     order.baseToken, // ETH
-        //     order.targetToken, // USDC
-        //     oneBaseToken, // 1 ETH
-        //     order.pairFee, // FEE
-        //     _secondsAgoDefault // TWA
-        // ); // ETH_PRICE in USDC
-
         if (
             order.action == Action.LOSS &&
             expectedAmountOut <= order.aimTargetTokenAmount &&
             expectedAmountOut > order.minTargetTokenAmount
         ) return true;
         if (order.action == Action.PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) return true;
-        if (order.action == Action.MOVING_PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) return true; // TODO: add logic for MOVING_PROFIT
 
         if (order.minTargetTokenAmount < expectedAmountOut) {
             return false;
         }
         return false;
+    }
+
+    function getPercent(uint256 amount, uint24 percent) internal view returns (uint256) {
+        return (amount * percent) / PRECISION;
     }
 }
 
