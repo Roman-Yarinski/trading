@@ -1,3 +1,4 @@
+import { ZERO_BYTES } from "./../utils/constants";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
@@ -29,6 +30,7 @@ describe("Method: createOrder", () => {
       expiration: Math.floor(Date.now() / 1000) + 60 * 60,
       boundOrders: [],
       action: Action.LOSS,
+      data: ZERO_BYTES,
     };
 
     const orderWithBound: TradingPlatform.OrderStruct = {
@@ -43,6 +45,7 @@ describe("Method: createOrder", () => {
       expiration: Math.floor(Date.now() / 1000) + 60 * 60,
       boundOrders: [1],
       action: Action.LOSS,
+      data: ZERO_BYTES,
     };
 
     return {
