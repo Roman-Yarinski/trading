@@ -7,9 +7,9 @@ const migrate: DeployFunction = async ({ deployments, getNamedAccounts }) => {
   const { deployer } = await getNamedAccounts();
   const { TOKEN } = DEPLOY;
 
-  await deploy("MockERC20", {
+  await deploy("MockERC20WithName", {
     from: deployer,
-    args: [TOKEN.DECIMALS, TOKEN.SUPPLY],
+    args: ["Test Token B", "ttB", TOKEN.DECIMALS, TOKEN.SUPPLY],
     log: true,
   });
 };
