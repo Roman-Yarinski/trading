@@ -36,7 +36,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
     mapping(uint256 => Order) private orderInfo;
     mapping(uint256 => uint256) private additionalInformation; // orderId => info  last execution time for DCA || last execution price for trailing
-    // mapping(uint256 => uint256) private ResultTokenOut; // TODO: orderId => amount of token  Fro DCA and TRAILING
+    mapping(uint256 => uint256) private resultTokenOut; // orderId => amount of token  Fro DCA and TRAILING
 
     mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
     mapping(address => uint256[]) private userOrders; // All orders for user
@@ -54,7 +54,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         uint128 aimTargetTokenAmount;
         uint128 minTargetTokenAmount; // minTargetTokenAmount < aimTargetTokenAmount if sell && minTargetTokenAmount > aimTargetTokenAmount if buy
         uint256 expiration;
-        uint256[] boundOrders;
+        uint256 boundOrder;
         Action action;
         bytes data; // additional data for different orders types
     }
@@ -63,7 +63,8 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         uint256 id;
         Order order;
         uint256 additionalInformation; // last execution time for DCA || last execution price for trailing
-        // bool status;
+        uint256 resultTokenOut;
+        bool status;
     }
 
     struct TrailingOrderData {
@@ -90,7 +91,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     event Withdrawed(address operator, address token, uint256 amount);
     event TokenAdded(address token);
     event TokenRemoved(address token);
-    event OrdersBounded(uint256[] leftOrders, uint256[] rightOrders);
+    event OrdersBounded(uint256 leftOrderId, uint256 rightOrderId);
     event OrderCanceled(uint256 orderId);
 
     /**
@@ -150,6 +151,10 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return balances[user][token];
     }
 
+    function getResultTokenOut(uint256 orderId) external view returns (uint256) {
+        return resultTokenOut[orderId];
+    }
+
     function getOrderCounter() external view returns (uint256) {
         return orderCounter.current();
     }
@@ -157,7 +162,13 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     function getOrdersInfo(uint256[] memory ordersIds) public view returns (OrderInfo[] memory orders) {
         orders = new OrderInfo[](ordersIds.length);
         for (uint256 i = 0; i < ordersIds.length; i++) {
-            orders[i] = OrderInfo(ordersIds[i], orderInfo[ordersIds[i]], additionalInformation[ordersIds[i]]);
+            orders[i] = OrderInfo(
+                ordersIds[i],
+                orderInfo[ordersIds[i]],
+                additionalInformation[ordersIds[i]],
+                resultTokenOut[ordersIds[i]],
+                _activeOrders.contains(ordersIds[i])
+            );
         }
         return orders;
     }
@@ -244,20 +255,18 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
             require(decodedData.amountPerPeriod > 0, "Zero amount to swap");
             additionalInformation[orderId] = block.timestamp;
-        }
-        if (order.action == Action.TRAILING) {
+        } else if (order.action == Action.TRAILING) {
             TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
             require(decodedData.fixingPerStep > 0, "Zero amount to swap");
             require(decodedData.baseAmount == order.baseAmount, "Wrong base amount");
             require(decodedData.step > 0, "Wrong base amount");
         }
-        if (order.boundOrders.length > 0) {
-            for (uint256 i = 0; i < order.boundOrders.length; i++) {
-                uint256 boundOrderId = order.boundOrders[i];
-                require(orderInfo[boundOrderId].userAddress == msg.sender, "Bound order is not yours");
-                require(_activeOrders.contains(boundOrderId), "Bound order is not active");
-                orderInfo[boundOrderId].boundOrders.push(orderId);
-            }
+        if (order.boundOrder != 0) {
+            require(order.action != Action.DCA, "Can't bound DCA order");
+            require(orderInfo[order.boundOrder].userAddress == msg.sender, "Bound order is not yours");
+            require(_activeOrders.contains(order.boundOrder), "Bound order is not active");
+            require(orderInfo[order.boundOrder].boundOrder == 0, "Bound order already bounded");
+            orderInfo[order.boundOrder].boundOrder = orderId;
         }
         _activeOrders.add(orderId);
         userOrders[msg.sender].push(orderId);
@@ -291,26 +300,21 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return true;
     }
 
-    function boundOrders(uint256[] calldata leftOrders, uint256[] calldata rightOrders) external {
-        require(leftOrders.length == rightOrders.length && leftOrders.length > 0, "Non-compatible lists");
-        for (uint256 i = 0; i < leftOrders.length; i++) {
-            require(
-                orderInfo[leftOrders[i]].userAddress == msg.sender &&
-                    orderInfo[rightOrders[i]].userAddress == msg.sender,
-                "Not your order"
-            );
-            require(
-                orderInfo[leftOrders[i]].action != Action.DCA &&
-                    orderInfo[leftOrders[i]].action != Action.TRAILING &&
-                    orderInfo[rightOrders[i]].action != Action.DCA &&
-                    orderInfo[rightOrders[i]].action != Action.TRAILING,
-                "Can't bound DCA or TRAILING"
-            );
-            require(leftOrders[i] != rightOrders[i], "Can't bound an order to yourself");
-            orderInfo[leftOrders[i]].boundOrders.push(rightOrders[i]);
-            orderInfo[rightOrders[i]].boundOrders.push(leftOrders[i]);
-        }
-        emit OrdersBounded(leftOrders, rightOrders);
+    function boundOrders(uint256 leftOrderId, uint256 rightOrderId) external {
+        require(leftOrderId != 0 && rightOrderId != 0 && leftOrderId != rightOrderId, "Non-compatible orders");
+        require(
+            orderInfo[leftOrderId].userAddress == msg.sender && orderInfo[rightOrderId].userAddress == msg.sender,
+            "Not your order"
+        );
+        require(
+            orderInfo[leftOrderId].action != Action.DCA && orderInfo[rightOrderId].action != Action.DCA,
+            "Can't bound DCA"
+        );
+        require(orderInfo[leftOrderId].boundOrder == 0, "Left order already bounded");
+        require(orderInfo[rightOrderId].boundOrder == 0, "Right order already bounded");
+        orderInfo[leftOrderId].boundOrder = rightOrderId;
+        orderInfo[rightOrderId].boundOrder = leftOrderId;
+        emit OrdersBounded(leftOrderId, rightOrderId);
     }
 
     function shouldRebalance() public view returns (uint256[] memory) {
@@ -320,7 +324,6 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         if (ordersCount < to) to = ordersCount;
         uint256[] memory ordersIds = new uint256[](to);
         uint256 skipped = 0;
-
         for (uint256 i = 0; i < to; i++) {
             uint256 orderId = _activeOrders.at(i);
             if (checkOrder(orderId)) {
@@ -329,7 +332,6 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
                 skipped++;
             }
         }
-
         if (skipped > 0) {
             uint256 newLength = to - skipped;
             assembly {
@@ -405,14 +407,12 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             }
         } else if (order.action == Action.LOSS || order.action == Action.PROFIT) {
             _activeOrders.remove(orderId); //update active orders set
-            if (order.boundOrders.length > 0) {
-                for (uint256 i = 0; i < order.boundOrders.length; i++) {
-                    if (_activeOrders.contains(order.boundOrders[i])) {
-                        Order memory boundOrder = orderInfo[order.boundOrders[i]];
-                        _activeOrders.remove(order.boundOrders[i]);
-                        balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
-                    } // remove all bound orders and refund tokens to user balance
-                }
+            if (order.boundOrder != 0) {
+                if (_activeOrders.contains(order.boundOrder)) {
+                    Order memory boundOrder = orderInfo[order.boundOrder];
+                    _activeOrders.remove(order.boundOrder);
+                    balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
+                } // remove all bound orders and refund tokens to user balance
             }
         }
         IERC20(order.baseToken).approve(_uniswapHelperV3, amountToSwap);
@@ -428,6 +428,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // TODO: order.minTargetTokenAmount < amountOut - feeAmount ?
         balances[feeRecipient][order.targetToken] += feeAmount; // update fee balance
         balances[order.userAddress][order.targetToken] += amountOut - feeAmount; // update user balance
+        resultTokenOut[orderId] += amountOut - feeAmount; // save amount that we get from this order execution
         emit OrderExecuted(orderId, msg.sender);
     }
 
