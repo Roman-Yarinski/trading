@@ -28,7 +28,7 @@ describe("Method: createOrder", () => {
       aimTargetTokenAmount: ethers.utils.parseUnits("50"),
       minTargetTokenAmount: ethers.utils.parseUnits("45"),
       expiration: Math.floor(Date.now() / 1000) + 60 * 60,
-      boundOrders: [],
+      boundOrder: 0,
       action: Action.LOSS,
       data: ZERO_BYTES,
     };
@@ -43,7 +43,7 @@ describe("Method: createOrder", () => {
       aimTargetTokenAmount: ethers.utils.parseUnits("50"),
       minTargetTokenAmount: ethers.utils.parseUnits("45"),
       expiration: Math.floor(Date.now() / 1000) + 60 * 60,
-      boundOrders: [1],
+      boundOrder: 1,
       action: Action.LOSS,
       data: ZERO_BYTES,
     };
@@ -215,7 +215,7 @@ describe("Method: createOrder", () => {
     });
 
     it("should boundOrders be equal to expected", () => {
-      expect(orderInfo["boundOrders"]).to.be.deep.eq(orderWithBound.boundOrders);
+      expect(orderInfo["boundOrder"]).to.be.eq(orderWithBound.boundOrder);
     });
 
     it("should baseAmount be equal to expected", () => {
@@ -267,7 +267,7 @@ describe("Method: createOrder", () => {
         aimTargetTokenAmount: 0,
         minTargetTokenAmount: 0,
         expiration: 0,
-        boundOrders: [],
+        boundOrder: 0,
         action: Action.DCA,
         data,
       };
@@ -345,7 +345,7 @@ describe("Method: createOrder", () => {
     });
 
     it("should boundOrders be equal to expected", () => {
-      expect(orderInfo.order["boundOrders"]).to.be.deep.eq(orderDCA.boundOrders);
+      expect(orderInfo.order["boundOrder"]).to.be.eq(orderDCA.boundOrder);
     });
 
     it("should data be equal to expected", () => {
@@ -403,7 +403,7 @@ describe("Method: createOrder", () => {
         aimTargetTokenAmount: ethers.utils.parseUnits("50"),
         minTargetTokenAmount: ethers.utils.parseUnits("45"),
         expiration: Math.floor(Date.now() / 1000) + 60 * 60,
-        boundOrders: [],
+        boundOrder: 0,
         action: Action.TRAILING,
         data,
       };
@@ -480,7 +480,7 @@ describe("Method: createOrder", () => {
     });
 
     it("should boundOrders be equal to expected", () => {
-      expect(orderInfo["boundOrders"]).to.be.deep.eq(orderTrailing.boundOrders);
+      expect(orderInfo["boundOrder"]).to.be.eq(orderTrailing.boundOrder);
     });
 
     it("should data be equal to expected", () => {

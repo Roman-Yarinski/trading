@@ -46,7 +46,7 @@ export async function createOrder(
     aimTargetTokenAmount,
     minTargetTokenAmount,
     expiration: Math.floor(Date.now() / 1000) + 60 * 60,
-    boundOrders: [],
+    boundOrder: 0,
     action,
     data,
   };

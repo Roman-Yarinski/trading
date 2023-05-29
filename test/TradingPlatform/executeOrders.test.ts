@@ -23,6 +23,33 @@ async function preparePairAndContracts() {
 }
 
 describe("Method: executeOrders", () => {
+  // describe.only("Calculate data ", () => {
+  //   it("should calculate data for TRAILING", () => {
+  //     const baseAmountForTRAILING = "1500000000000000000";
+  //     const amountToSpendForPeriod = ethers.utils.parseUnits("0.5");
+  //     const step = 50000; // 5%
+
+  //     const data = ethers.utils.defaultAbiCoder.encode(
+  //       ["uint128", "uint128", "uint24"],
+  //       [baseAmountForTRAILING, amountToSpendForPeriod, step]
+  //     );
+
+  //     console.log(data);
+  //   });
+
+  //   it("should calculate data for DCA", () => {
+  //     const amountToSpendForPeriod = ethers.utils.parseUnits("10");
+  //     const period = 3600;
+
+  //     const data = ethers.utils.defaultAbiCoder.encode(
+  //       ["uint128", "uint128"],
+  //       [period, amountToSpendForPeriod]
+  //     );
+
+  //     console.log(data);
+  //   });
+  // });
+
   describe("Orders not exists", () => {
     it("should do nothing", async () => {
       const { tradingPlatform } = await loadFixture(preparePairAndContracts);
@@ -187,6 +214,12 @@ describe("Method: executeOrders", () => {
 
       rebalanceArray = await tradingPlatform.shouldRebalance();
       expect(rebalanceArray).to.be.deep.eq([]);
+      const resultTokenOutOne = await tradingPlatform.getResultTokenOut(1);
+      const resultTokenOutFour = await tradingPlatform.getResultTokenOut(4);
+      const resultTokenOutNinetyNine = await tradingPlatform.getResultTokenOut(99);
+      expect(resultTokenOutOne).to.be.gt(0);
+      expect(resultTokenOutFour).to.be.gt(0);
+      expect(resultTokenOutNinetyNine).to.be.eq(0);
     });
 
     it("should execute all ready orders", async () => {
@@ -316,7 +349,7 @@ describe("Method: executeOrders", () => {
           Action.PROFIT
         );
 
-        await tradingPlatform.boundOrders([1, 2], [2, 1]);
+        await tradingPlatform.boundOrders(1, 2);
 
         const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 501);
         await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
@@ -363,6 +396,12 @@ describe("Method: executeOrders", () => {
       it("should increment user balance", async () => {
         const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
         expect(userBalance).to.be.gte(minTargetTokenAmountProfit);
+      });
+
+      it("should increment resultTokenOut for order", async () => {
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+        expect(resultTokenOut).to.be.eq(userBalance);
       });
 
       it("should not change user orders list", async () => {
@@ -468,6 +507,12 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gte(minTargetTokenAmount);
       });
 
+      it("should increment resultTokenOut for order", async () => {
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+        expect(resultTokenOut).to.be.eq(userBalance);
+      });
+
       it("should not change user orders list", async () => {
         const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
         expect(userOrders).to.be.deep.eq([1]);
@@ -545,6 +590,11 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gt(0);
       });
 
+      it("should increment resultTokenOut for order", async () => {
+        const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+        expect(resultTokenOut).to.be.eq(userBalance);
+      });
+
       it("should decries order baseAmount", async () => {
         const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0].order;
         expect(orderInfo.baseAmount).to.be.eq(baseAmountForDCA.sub(amountToSpendForPeriod));
@@ -596,6 +646,12 @@ describe("Method: executeOrders", () => {
         it("should increment user balance", async () => {
           const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
           expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should increment resultTokenOut for order", async () => {
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+          expect(resultTokenOut).to.be.eq(newUserBalance);
         });
 
         it("should not change user orders list", async () => {
@@ -699,6 +755,11 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gt(0);
       });
 
+      it("should increment resultTokenOut for order", async () => {
+        const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+        expect(resultTokenOut).to.be.eq(userBalance);
+      });
+
       it("should set last update price", async () => {
         const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0];
         expect(orderInfo.additionalInformation).to.be.eq(amountWithCurrentPriceBefore);
@@ -774,6 +835,12 @@ describe("Method: executeOrders", () => {
         it("should increment user balance", async () => {
           const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
           expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should increment resultTokenOut for order", async () => {
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
+          expect(resultTokenOut).to.be.eq(newUserBalance);
         });
 
         it("should not change user orders list", async () => {
