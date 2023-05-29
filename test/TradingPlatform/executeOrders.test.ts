@@ -1,8 +1,8 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
-import { ContractTransaction } from "ethers";
+import { loadFixture, mine, time } from "@nomicfoundation/hardhat-network-helpers";
+import { BigNumber, ContractTransaction } from "ethers";
 import { ERC20, IUniswapV3Pool, SwapHelperUniswapV3, TradingPlatform } from "@contracts";
 import {
   Action,
@@ -12,6 +12,8 @@ import {
   createOrder,
   standardPrepare,
   calculateAmount0ToSale,
+  SECONDS_AGO,
+  calculateAmount1ToSale,
 } from "@test-utils";
 
 async function preparePairAndContracts() {
@@ -272,98 +274,634 @@ describe("Method: executeOrders", () => {
   });
 
   describe("When all parameters correct", () => {
-    let result: ContractTransaction;
-    let tradingPlatform: TradingPlatform;
-    let swapHelperContract: SwapHelperUniswapV3;
-    let poolContract: IUniswapV3Pool;
-    let baseToken: ERC20;
-    let targetToken: ERC20;
-    let deployer: SignerWithAddress;
-    const aimTargetTokenAmountProfit = ethers.utils.parseUnits("2");
-    const minTargetTokenAmountProfit = ethers.utils.parseUnits("2");
+    describe("PROFIT action with bound", () => {
+      let result: ContractTransaction;
+      let tradingPlatform: TradingPlatform;
+      let swapHelperContract: SwapHelperUniswapV3;
+      let poolContract: IUniswapV3Pool;
+      let baseToken: ERC20;
+      let targetToken: ERC20;
+      let deployer: SignerWithAddress;
+      const aimTargetTokenAmountProfit = ethers.utils.parseUnits("2");
+      const minTargetTokenAmountProfit = ethers.utils.parseUnits("2");
 
-    before(async () => {
-      const deployments = await loadFixture(preparePairAndContracts);
-      tradingPlatform = deployments.tradingPlatform;
-      swapHelperContract = deployments.swapHelperContract;
-      poolContract = deployments.poolContract;
-      baseToken = deployments.baseToken;
-      targetToken = deployments.targetToken;
-      deployer = deployments.deployer;
+      before(async () => {
+        const deployments = await loadFixture(preparePairAndContracts);
+        tradingPlatform = deployments.tradingPlatform;
+        swapHelperContract = deployments.swapHelperContract;
+        poolContract = deployments.poolContract;
+        baseToken = deployments.baseToken;
+        targetToken = deployments.targetToken;
+        deployer = deployments.deployer;
 
-      await createOrder(
-        deployer,
-        tradingPlatform,
-        baseToken,
-        targetToken,
-        baseAmount,
-        aimTargetTokenAmountProfit,
-        minTargetTokenAmountProfit,
-        Action.PROFIT
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmount,
+          aimTargetTokenAmountProfit,
+          minTargetTokenAmountProfit,
+          Action.PROFIT
+        );
+
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmount,
+          aimTargetTokenAmountProfit,
+          minTargetTokenAmountProfit,
+          Action.PROFIT
+        );
+
+        await tradingPlatform.boundOrders([1, 2], [2, 1]);
+
+        const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 501);
+        await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          targetToken.address,
+          baseToken.address,
+          amountToken0ToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+
+        await mine(10, { interval: 60 });
+
+        result = await tradingPlatform.executeOrders([1]);
+      });
+
+      it("should not reverted", async () => {
+        await expect(result).to.be.not.reverted;
+      });
+
+      it("should remove order from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+        expect(orderStatus).to.be.false;
+      });
+
+      it("should remove bound orders from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(2);
+        expect(orderStatus).to.be.false;
+      });
+
+      it("should remove orders from actives", async () => {
+        const activeOrdersIds = await tradingPlatform.activeOrdersIds(0, 1000);
+        expect(activeOrdersIds).to.be.deep.eq([]);
+      });
+
+      it("should increment fee balance", async () => {
+        // TODO: fix fee check
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        const feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        expect(feeRecipientBalance).to.be.gte(0);
+      });
+
+      it("should increment user balance", async () => {
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        expect(userBalance).to.be.gte(minTargetTokenAmountProfit);
+      });
+
+      it("should not change user orders list", async () => {
+        const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+        expect(userOrders).to.be.deep.eq([1, 2]);
+      });
+
+      it("should emit OrderExecuted event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      });
+    });
+
+    describe("LOSS action", () => {
+      let result: ContractTransaction;
+      let tradingPlatform: TradingPlatform;
+      let swapHelperContract: SwapHelperUniswapV3;
+      let poolContract: IUniswapV3Pool;
+      let baseToken: ERC20;
+      let targetToken: ERC20;
+      let deployer: SignerWithAddress;
+      let checkStatusOrderBefore: boolean;
+      let amountWithCurrentPriceSecond: BigNumber;
+      const aimTargetTokenAmount = ethers.utils.parseUnits("4");
+      const minTargetTokenAmount = ethers.utils.parseUnits("3");
+
+      before(async () => {
+        const deployments = await loadFixture(preparePairAndContracts);
+        tradingPlatform = deployments.tradingPlatform;
+        swapHelperContract = deployments.swapHelperContract;
+        poolContract = deployments.poolContract;
+        baseToken = deployments.baseToken;
+        targetToken = deployments.targetToken;
+        deployer = deployments.deployer;
+
+        const amountToSaleBefore = await calculateAmount0ToSale(poolContract.address, 100, 501);
+        await targetToken.approve(swapHelperContract.address, amountToSaleBefore.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          targetToken.address,
+          baseToken.address,
+          amountToSaleBefore.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
+
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmount,
+          aimTargetTokenAmount,
+          minTargetTokenAmount,
+          Action.LOSS
+        );
+
+        const amountToSale = await calculateAmount0ToSale(poolContract.address, 399, 100);
+        await baseToken.approve(swapHelperContract.address, amountToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          baseToken.address,
+          targetToken.address,
+          amountToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
+
+        amountWithCurrentPriceSecond = await swapHelperContract.getAmountOut(
+          baseToken.address,
+          targetToken.address,
+          baseAmount,
+          PAIR_FEE,
+          SECONDS_AGO
+        );
+
+        checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+        result = await tradingPlatform.executeOrders([1]);
+      });
+
+      it("should not reverted", async () => {
+        expect(amountWithCurrentPriceSecond).to.be.lt(aimTargetTokenAmount);
+        expect(amountWithCurrentPriceSecond).to.be.gt(minTargetTokenAmount);
+        await expect(result).to.be.not.reverted;
+      });
+
+      it("should remove order from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+        expect(checkStatusOrderBefore).to.be.true;
+        expect(orderStatus).to.be.false;
+      });
+
+      it("should increment fee balance", async () => {
+        // TODO: fix fee check
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        const feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        expect(feeRecipientBalance).to.be.gt(0);
+      });
+
+      it("should increment user balance", async () => {
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        expect(userBalance).to.be.gte(minTargetTokenAmount);
+      });
+
+      it("should not change user orders list", async () => {
+        const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+        expect(userOrders).to.be.deep.eq([1]);
+      });
+
+      it("should emit OrderExecuted event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      });
+    });
+
+    describe("DCA action", () => {
+      let result: ContractTransaction;
+      let tradingPlatform: TradingPlatform;
+      let baseToken: ERC20;
+      let targetToken: ERC20;
+      let deployer: SignerWithAddress;
+      let checkStatusOrderBefore: boolean;
+      let feeRecipientBalance: BigNumber;
+      let userBalance: BigNumber;
+
+      const aimTargetTokenAmount = 0;
+      const minTargetTokenAmount = 0;
+      const baseAmountForDCA = ethers.utils.parseUnits("100");
+      const period = 120;
+      const amountToSpendForPeriod = ethers.utils.parseUnits("60");
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128"],
+        [period, amountToSpendForPeriod]
       );
 
-      await createOrder(
-        deployer,
-        tradingPlatform,
-        baseToken,
-        targetToken,
-        baseAmount,
-        aimTargetTokenAmountProfit,
-        minTargetTokenAmountProfit,
-        Action.PROFIT
+      before(async () => {
+        const deployments = await loadFixture(preparePairAndContracts);
+        tradingPlatform = deployments.tradingPlatform;
+        baseToken = deployments.baseToken;
+        targetToken = deployments.targetToken;
+        deployer = deployments.deployer;
+
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmountForDCA,
+          aimTargetTokenAmount,
+          minTargetTokenAmount,
+          Action.DCA,
+          data
+        );
+
+        checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+
+        await time.increase(period + 1);
+        result = await tradingPlatform.executeOrders([1]);
+      });
+
+      it("should not reverted", async () => {
+        await expect(result).to.be.not.reverted;
+      });
+
+      it("should not remove order from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+        expect(checkStatusOrderBefore).to.be.true;
+        expect(orderStatus).to.be.true;
+      });
+
+      it("should increment fee balance", async () => {
+        // TODO: fix fee check
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        expect(feeRecipientBalance).to.be.gt(0);
+      });
+
+      it("should increment user balance", async () => {
+        userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        expect(userBalance).to.be.gt(0);
+      });
+
+      it("should decries order baseAmount", async () => {
+        const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0].order;
+        expect(orderInfo.baseAmount).to.be.eq(baseAmountForDCA.sub(amountToSpendForPeriod));
+      });
+
+      it("should set last update timestamp", async () => {
+        const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0];
+        const lastBlockTimestamp = await time.latest();
+        expect(orderInfo.additionalInformation).to.be.eq(lastBlockTimestamp);
+      });
+
+      it("should not change user orders list", async () => {
+        const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+        expect(userOrders).to.be.deep.eq([1]);
+      });
+
+      it("should emit OrderExecuted event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      });
+
+      describe("DCA finish swap", () => {
+        before(async () => {
+          checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+
+          await time.increase(period + 1);
+          result = await tradingPlatform.executeOrders([1]);
+        });
+
+        it("should not reverted", async () => {
+          await expect(result).to.be.not.reverted;
+        });
+
+        it("should remove order from actives", async () => {
+          const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+          expect(checkStatusOrderBefore).to.be.true;
+          expect(orderStatus).to.be.false;
+        });
+
+        it("should increment fee balance", async () => {
+          // TODO: fix fee check
+          const feeRecipient = await tradingPlatform.getFeeRecipient();
+          const newFeeRecipientBalance = await tradingPlatform.getUserBalance(
+            feeRecipient,
+            targetToken.address
+          );
+          expect(newFeeRecipientBalance).to.be.gt(feeRecipientBalance);
+        });
+
+        it("should increment user balance", async () => {
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should not change user orders list", async () => {
+          const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+          expect(userOrders).to.be.deep.eq([1]);
+        });
+
+        it("should emit OrderExecuted event", async () => {
+          await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+        });
+      });
+    });
+
+    describe("TRAILING action", () => {
+      let result: ContractTransaction;
+      let tradingPlatform: TradingPlatform;
+      let swapHelperContract: SwapHelperUniswapV3;
+      let baseToken: ERC20;
+      let targetToken: ERC20;
+      let poolContract: IUniswapV3Pool;
+      let deployer: SignerWithAddress;
+      let checkStatusOrderBefore: boolean;
+      let feeRecipientBalance: BigNumber;
+      let userBalance: BigNumber;
+      let amountWithCurrentPriceBefore: BigNumber;
+
+      const baseAmountForTRAILING = ethers.utils.parseUnits("100");
+      const aimTargetTokenAmount = ethers.utils.parseUnits("200");
+      const minTargetTokenAmount = ethers.utils.parseUnits("200");
+      const step = 100000; // 10%
+      const amountToSpendForPeriod = ethers.utils.parseUnits("60");
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmountForTRAILING, amountToSpendForPeriod, step]
       );
 
-      await tradingPlatform.boundOrders([1, 2], [2, 1]);
+      before(async () => {
+        const deployments = await loadFixture(preparePairAndContracts);
+        tradingPlatform = deployments.tradingPlatform;
+        swapHelperContract = deployments.swapHelperContract;
+        baseToken = deployments.baseToken;
+        targetToken = deployments.targetToken;
+        deployer = deployments.deployer;
+        poolContract = deployments.poolContract;
 
-      const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 501);
-      await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
-      await swapHelperContract.swapWithCustomSlippage(
-        deployer.address,
-        targetToken.address,
-        baseToken.address,
-        amountToken0ToSale.toString(),
-        PAIR_FEE,
-        PRECISION - 1 // 100% slippage for set new price on pair
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmountForTRAILING,
+          aimTargetTokenAmount,
+          minTargetTokenAmount,
+          Action.TRAILING,
+          data
+        );
+        const amountToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+        await targetToken.approve(swapHelperContract.address, amountToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          targetToken.address,
+          baseToken.address,
+          amountToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
+
+        amountWithCurrentPriceBefore = await swapHelperContract.getAmountOut(
+          baseToken.address,
+          targetToken.address,
+          baseAmountForTRAILING,
+          PAIR_FEE,
+          SECONDS_AGO
+        );
+
+        checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+        result = await tradingPlatform.executeOrders([1]);
+      });
+
+      it("should not reverted", async () => {
+        // expect(amountWithCurrentPriceBefore).to.be.gt(aimTargetTokenAmount);
+        await expect(result).to.be.not.reverted;
+      });
+
+      it("should not remove order from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+        expect(checkStatusOrderBefore).to.be.true;
+        expect(orderStatus).to.be.true;
+      });
+
+      it("should increment fee balance", async () => {
+        // TODO: fix fee check
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        expect(feeRecipientBalance).to.be.gt(0);
+      });
+
+      it("should increment user balance", async () => {
+        userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        expect(userBalance).to.be.gt(0);
+      });
+
+      it("should set last update price", async () => {
+        const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0];
+        expect(orderInfo.additionalInformation).to.be.eq(amountWithCurrentPriceBefore);
+      });
+
+      it("should decries order baseAmount", async () => {
+        const orderInfo = (await tradingPlatform.getOrdersInfo([1]))[0].order;
+        expect(orderInfo.baseAmount).to.be.eq(baseAmountForTRAILING.sub(amountToSpendForPeriod));
+      });
+
+      it("should not change user orders list", async () => {
+        const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+        expect(userOrders).to.be.deep.eq([1]);
+      });
+
+      it("should emit OrderExecuted event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      });
+
+      describe("TRAILING finish swap", () => {
+        before(async () => {
+          checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+
+          const amountToSale = await calculateAmount1ToSale(poolContract.address, 100, 251);
+          await targetToken.approve(swapHelperContract.address, amountToSale.toString());
+          await swapHelperContract.swapWithCustomSlippage(
+            deployer.address,
+            targetToken.address,
+            baseToken.address,
+            amountToSale.toString(),
+            PAIR_FEE,
+            PRECISION - 1 // 100% slippage for set new price on pair
+          );
+          await mine(10, { interval: 60 });
+
+          const additionalPercent = aimTargetTokenAmount.mul(step).div(PRECISION);
+          const newTargetPrice = aimTargetTokenAmount.add(additionalPercent);
+          const amountWithCurrentPriceSecond = await swapHelperContract.getAmountOut(
+            baseToken.address,
+            targetToken.address,
+            baseAmountForTRAILING,
+            PAIR_FEE,
+            SECONDS_AGO
+          );
+
+          const checkStatusOrderSecond = await tradingPlatform.checkOrder(1);
+          expect(amountWithCurrentPriceSecond).to.be.gt(newTargetPrice);
+          expect(checkStatusOrderSecond).to.be.true;
+
+          result = await tradingPlatform.executeOrders([1]);
+        });
+
+        it("should not reverted", async () => {
+          await expect(result).to.be.not.reverted;
+        });
+
+        it("should remove order from actives", async () => {
+          const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+          expect(checkStatusOrderBefore).to.be.true;
+          expect(orderStatus).to.be.false;
+        });
+
+        it("should increment fee balance", async () => {
+          // TODO: fix fee check
+          const feeRecipient = await tradingPlatform.getFeeRecipient();
+          const newFeeRecipientBalance = await tradingPlatform.getUserBalance(
+            feeRecipient,
+            targetToken.address
+          );
+          expect(newFeeRecipientBalance).to.be.gt(feeRecipientBalance);
+        });
+
+        it("should increment user balance", async () => {
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should not change user orders list", async () => {
+          const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+          expect(userOrders).to.be.deep.eq([1]);
+        });
+
+        it("should emit OrderExecuted event", async () => {
+          await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+        });
+      });
+    });
+    describe("TRAILING with ending on price fail", () => {
+      let result: ContractTransaction;
+      let tradingPlatform: TradingPlatform;
+      let swapHelperContract: SwapHelperUniswapV3;
+      let baseToken: ERC20;
+      let targetToken: ERC20;
+      let poolContract: IUniswapV3Pool;
+      let deployer: SignerWithAddress;
+      let checkStatusOrderBefore: boolean;
+      let feeRecipientBalance: BigNumber;
+      let userBalance: BigNumber;
+
+      const baseAmountForTRAILING = ethers.utils.parseUnits("100");
+      const aimTargetTokenAmount = ethers.utils.parseUnits("200");
+      const minTargetTokenAmount = ethers.utils.parseUnits("200");
+      const step = 100000; // 10%
+      const amountToSpendForPeriod = ethers.utils.parseUnits("10");
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmountForTRAILING, amountToSpendForPeriod, step]
       );
 
-      await mine(10, { interval: 60 });
+      before(async () => {
+        const deployments = await loadFixture(preparePairAndContracts);
+        tradingPlatform = deployments.tradingPlatform;
+        swapHelperContract = deployments.swapHelperContract;
+        baseToken = deployments.baseToken;
+        targetToken = deployments.targetToken;
+        deployer = deployments.deployer;
+        poolContract = deployments.poolContract;
 
-      result = await tradingPlatform.executeOrders([1]);
-    });
+        await createOrder(
+          deployer,
+          tradingPlatform,
+          baseToken,
+          targetToken,
+          baseAmountForTRAILING,
+          aimTargetTokenAmount,
+          minTargetTokenAmount,
+          Action.TRAILING,
+          data
+        );
+        let amountToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+        await targetToken.approve(swapHelperContract.address, amountToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          targetToken.address,
+          baseToken.address,
+          amountToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
 
-    it("should not reverted", async () => {
-      await expect(result).to.be.not.reverted;
-    });
+        await tradingPlatform.executeOrders([1]);
 
-    it("should remove order from actives", async () => {
-      const orderStatus = await tradingPlatform.isActiveOrderExist(1);
-      expect(orderStatus).to.be.false;
-    });
+        amountToSale = await calculateAmount0ToSale(poolContract.address, 271, 100);
+        await targetToken.approve(swapHelperContract.address, amountToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          targetToken.address,
+          baseToken.address,
+          amountToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
+        await tradingPlatform.executeOrders([1]);
 
-    it("should remove bound orders from actives", async () => {
-      const orderStatus = await tradingPlatform.isActiveOrderExist(2);
-      expect(orderStatus).to.be.false;
-    });
+        amountToSale = await calculateAmount0ToSale(poolContract.address, 201, 100);
+        await baseToken.approve(swapHelperContract.address, amountToSale.toString());
+        await swapHelperContract.swapWithCustomSlippage(
+          deployer.address,
+          baseToken.address,
+          targetToken.address,
+          amountToSale.toString(),
+          PAIR_FEE,
+          PRECISION - 1 // 100% slippage for set new price on pair
+        );
+        await mine(10, { interval: 60 });
 
-    it("should remove orders from actives", async () => {
-      const activeOrdersIds = await tradingPlatform.activeOrdersIds(0, 1000);
-      expect(activeOrdersIds).to.be.deep.eq([]);
-    });
+        checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);
+        result = await tradingPlatform.executeOrders([1]);
+      });
 
-    it("should increment fee balance", async () => {
-      // TODO: fix fee check
-      const feeRecipient = await tradingPlatform.getFeeRecipient();
-      const feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
-      expect(feeRecipientBalance).to.be.gte(0);
-    });
+      it("should not reverted", async () => {
+        await expect(result).to.be.not.reverted;
+      });
 
-    it("should increment user balance", async () => {
-      const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
-      expect(userBalance).to.be.gte(minTargetTokenAmountProfit);
-    });
+      it("should not remove order from actives", async () => {
+        const orderStatus = await tradingPlatform.isActiveOrderExist(1);
+        expect(checkStatusOrderBefore).to.be.true;
+        expect(orderStatus).to.be.false;
+      });
 
-    it("should emit OrderExecuted event", async () => {
-      await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      it("should increment fee balance", async () => {
+        // TODO: fix fee check
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        feeRecipientBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        expect(feeRecipientBalance).to.be.gt(0);
+      });
+
+      it("should increment user balance", async () => {
+        // TODO: fix fee check
+        userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        expect(userBalance).to.be.gt(0);
+      });
+
+      it("should not change user orders list", async () => {
+        const userOrders = await tradingPlatform.getUserOrdersIds(deployer.address);
+        expect(userOrders).to.be.deep.eq([1]);
+      });
+
+      it("should emit OrderExecuted event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
+      });
     });
   });
 });

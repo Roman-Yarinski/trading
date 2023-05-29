@@ -1,6 +1,6 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
+import { loadFixture, mine, time } from "@nomicfoundation/hardhat-network-helpers";
 import {
   Action,
   PAIR_FEE,
@@ -20,6 +20,27 @@ async function preparePairAndContracts() {
 
 describe("Method: checkOrder", () => {
   describe("Order not exists", () => {
+    it("should return false if order expiration date has expired", async () => {
+      const { tradingPlatform, deployer, baseToken, targetToken } = await loadFixture(
+        preparePairAndContracts
+      );
+      await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmount,
+        100,
+        100,
+        Action.PROFIT
+      );
+      const orderInfo = (await tradingPlatform.getOrdersInfo(["1"]))[0].order;
+      await time.increaseTo(orderInfo.expiration.add(1));
+
+      const checkStatusExpiredOrder = await tradingPlatform.checkOrder(1);
+      expect(checkStatusExpiredOrder).to.be.false;
+    });
+
     it("should return false if order not exists", async () => {
       const { tradingPlatform } = await loadFixture(preparePairAndContracts);
 
@@ -302,6 +323,7 @@ describe("Method: checkOrder", () => {
       const checkStatusOrderLossTwo = await tradingPlatform.checkOrder(2);
 
       expect(amountWithCurrentPrice).to.be.lt(orderLossOne.aimTargetTokenAmount);
+      expect(amountWithCurrentPrice).to.be.gte(orderLossTwo.minTargetTokenAmount);
       expect(amountWithCurrentPrice).to.be.gte(orderLossTwo.aimTargetTokenAmount);
       expect(checkStatusOrderLossOne).to.be.true;
       expect(checkStatusOrderLossTwo).to.be.false;
@@ -364,6 +386,301 @@ describe("Method: checkOrder", () => {
       expect(amountWithCurrentPrice).to.be.gte(orderLossTwo.minTargetTokenAmount);
       expect(checkStatusOrderLossOne).to.be.false;
       expect(checkStatusOrderLossTwo).to.be.true;
+    });
+  });
+
+  describe("DCA action", () => {
+    const baseAmountForDCA = ethers.utils.parseUnits("100");
+    const period = 120;
+    const AmountToSpendForPeriod = ethers.utils.parseUnits("10");
+    const data = ethers.utils.defaultAbiCoder.encode(
+      ["uint128", "uint128"],
+      [period, AmountToSpendForPeriod]
+    );
+
+    it("should return false if required period has not passed", async () => {
+      const { tradingPlatform, deployer, baseToken, targetToken } = await loadFixture(
+        preparePairAndContracts
+      );
+
+      await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForDCA,
+        0,
+        0,
+        Action.DCA,
+        data
+      );
+
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+      const orderInfo = await tradingPlatform.getOrdersInfo([1]);
+      const lsatUpdateTimestamp = orderInfo[0]["additionalInformation"];
+      const timestamp = await time.latest();
+
+      expect(timestamp).to.be.lt(lsatUpdateTimestamp.add(period));
+      expect(checkStatusOrderOne).to.be.false;
+    });
+
+    it("should return true if required period has not passed", async () => {
+      const { tradingPlatform, deployer, baseToken, targetToken } = await loadFixture(
+        preparePairAndContracts
+      );
+
+      await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForDCA,
+        0,
+        0,
+        Action.DCA,
+        data
+      );
+
+      await time.increase(period + 1);
+
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+      const orderInfo = await tradingPlatform.getOrdersInfo([1]);
+      const lsatUpdateTimestamp = orderInfo[0]["additionalInformation"];
+      const timestamp = await time.latest();
+
+      expect(timestamp).to.be.gte(lsatUpdateTimestamp.add(period));
+      expect(checkStatusOrderOne).to.be.true;
+    });
+  });
+
+  describe("TRAILING action", () => {
+    const baseAmountForTRAILING = ethers.utils.parseUnits("100");
+    const aimTargetTokenAmountOne = ethers.utils.parseUnits("200");
+    const minTargetTokenAmountOne = ethers.utils.parseUnits("200");
+    const step = 100000; // 10%
+    const AmountToSpendForPeriod = ethers.utils.parseUnits("10");
+    const data = ethers.utils.defaultAbiCoder.encode(
+      ["uint128", "uint128", "uint24"],
+      [baseAmountForTRAILING, AmountToSpendForPeriod, step]
+    );
+
+    it("should return false if not get target price", async () => {
+      const { tradingPlatform, swapHelperContract, deployer, baseToken, targetToken } = await loadFixture(
+        preparePairAndContracts
+      );
+
+      await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForTRAILING,
+        aimTargetTokenAmountOne,
+        minTargetTokenAmountOne,
+        Action.TRAILING,
+        data
+      );
+
+      const amountWithCurrentPrice = await swapHelperContract.getAmountOut(
+        baseToken.address,
+        targetToken.address,
+        baseAmountForTRAILING,
+        PAIR_FEE,
+        SECONDS_AGO
+      );
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+
+      expect(amountWithCurrentPrice).to.be.lt(aimTargetTokenAmountOne);
+      expect(checkStatusOrderOne).to.be.false;
+    });
+
+    it("should return false if not get target price plus percent (after first execution)", async () => {
+      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
+        await loadFixture(preparePairAndContracts);
+
+      const orderOne = await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForTRAILING,
+        aimTargetTokenAmountOne,
+        minTargetTokenAmountOne,
+        Action.TRAILING,
+        data
+      );
+
+      const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+      await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        targetToken.address,
+        baseToken.address,
+        amountToken0ToSale.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const amountWithCurrentPrice = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+      expect(amountWithCurrentPrice).to.be.gt(aimTargetTokenAmountOne);
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+      expect(checkStatusOrderOne).to.be.true;
+      await tradingPlatform.executeOrders([1]);
+      const additionalPercent = aimTargetTokenAmountOne.mul(step).div(PRECISION);
+      const newTargetPrice = aimTargetTokenAmountOne.add(additionalPercent);
+
+      const amountWithCurrentPriceSecond = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+
+      const checkStatusOrderOneSecond = await tradingPlatform.checkOrder(1);
+      expect(amountWithCurrentPriceSecond).to.be.lt(newTargetPrice);
+      expect(checkStatusOrderOneSecond).to.be.false;
+    });
+
+    it("should return true if get target price plus percent (after first execution)", async () => {
+      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
+        await loadFixture(preparePairAndContracts);
+
+      const orderOne = await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForTRAILING,
+        aimTargetTokenAmountOne,
+        minTargetTokenAmountOne,
+        Action.TRAILING,
+        data
+      );
+
+      const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+      await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        targetToken.address,
+        baseToken.address,
+        amountToken0ToSale.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const amountWithCurrentPrice = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+      expect(amountWithCurrentPrice).to.be.gt(aimTargetTokenAmountOne);
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+      expect(checkStatusOrderOne).to.be.true;
+      await tradingPlatform.executeOrders([1]);
+      const additionalPercent = aimTargetTokenAmountOne.mul(step).div(PRECISION);
+      const newTargetPrice = aimTargetTokenAmountOne.add(additionalPercent);
+
+      const amountToken0ToSaleSecond = await calculateAmount0ToSale(poolContract.address, 100, 501);
+      await targetToken.approve(swapHelperContract.address, amountToken0ToSaleSecond.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        targetToken.address,
+        baseToken.address,
+        amountToken0ToSaleSecond.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const amountWithCurrentPriceSecond = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+
+      const checkStatusOrderOneSecond = await tradingPlatform.checkOrder(1);
+      expect(amountWithCurrentPriceSecond).to.be.gt(newTargetPrice);
+      expect(checkStatusOrderOneSecond).to.be.true;
+    });
+
+    it("should return true if get price equal to price minus percent (after first execution)", async () => {
+      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
+        await loadFixture(preparePairAndContracts);
+
+      const orderOne = await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmountForTRAILING,
+        aimTargetTokenAmountOne,
+        minTargetTokenAmountOne,
+        Action.TRAILING,
+        data
+      );
+
+      const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+      await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        targetToken.address,
+        baseToken.address,
+        amountToken0ToSale.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const amountWithCurrentPrice = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+      expect(amountWithCurrentPrice).to.be.gt(aimTargetTokenAmountOne);
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+      expect(checkStatusOrderOne).to.be.true;
+      await tradingPlatform.executeOrders([1]);
+      const lastExecutingPrice = (await tradingPlatform.getOrdersInfo([1]))[0].additionalInformation;
+      const borderPrice = lastExecutingPrice.sub(lastExecutingPrice.mul(step).div(PRECISION));
+
+      const amountToken0ToSaleSecond = await calculateAmount0ToSale(poolContract.address, 100, 100);
+      await baseToken.approve(swapHelperContract.address, amountToken0ToSaleSecond.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        baseToken.address,
+        targetToken.address,
+        amountToken0ToSaleSecond.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const amountWithCurrentPriceSecond = await swapHelperContract.getAmountOut(
+        orderOne.baseToken,
+        orderOne.targetToken,
+        baseAmountForTRAILING,
+        orderOne.pairFee,
+        SECONDS_AGO
+      );
+
+      const checkStatusOrderOneSecond = await tradingPlatform.checkOrder(1);
+      expect(amountWithCurrentPriceSecond).to.be.lt(borderPrice);
+      expect(checkStatusOrderOneSecond).to.be.true;
     });
   });
 });

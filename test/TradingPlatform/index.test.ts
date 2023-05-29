@@ -4,6 +4,7 @@ describe("TradingPlatform: ", () => {
   require("./deposit.test");
   require("./withdraw.test");
   require("./createOrder.test");
+  require("./cancelOrders.test");
   require("./boundOrders.test");
   require("./checkOrder.test");
   require("./shouldRebalance.test");

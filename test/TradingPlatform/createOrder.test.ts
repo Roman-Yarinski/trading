@@ -4,7 +4,7 @@ import { ethers } from "hardhat";
 import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { MockERC20, TradingPlatform } from "@contracts";
-import { BigNumber, ContractTransaction } from "ethers";
+import { BigNumber, BigNumberish, ContractTransaction } from "ethers";
 import { standardPrepare, PAIR_FEE, SLIPPAGE, Action, ZERO_ADDRESS } from "@test-utils";
 
 const baseAmount = ethers.utils.parseUnits("100");
@@ -124,7 +124,7 @@ describe("Method: createOrder", () => {
     });
   });
 
-  describe("When all parameters correct", () => {
+  describe("LOSS with bound: When all parameters correct", () => {
     let result: ContractTransaction;
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
@@ -133,6 +133,7 @@ describe("Method: createOrder", () => {
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
+    let orderInfo: TradingPlatform.OrderStruct;
 
     before(async () => {
       const deploy = await loadFixture(deployTradingPlatform);
@@ -146,6 +147,7 @@ describe("Method: createOrder", () => {
       orderIdBefore = await tradingPlatform.getOrderCounter();
       result = await tradingPlatform.createOrder(orderWithBound);
       orderId = await tradingPlatform.getOrderCounter();
+      orderInfo = (await tradingPlatform.getOrdersInfo([orderId]))[0].order;
     });
 
     it("should not reverted", async () => {
@@ -176,59 +178,48 @@ describe("Method: createOrder", () => {
       expect(orderStatus).to.be.deep.eq([1, 2]);
     });
 
-    it("should userAddress be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should userAddress be equal to expected", () => {
       expect(orderInfo["userAddress"]).to.be.eq(orderWithBound.userAddress);
     });
 
-    it("should baseToken be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should baseToken be equal to expected", () => {
       expect(orderInfo["baseToken"]).to.be.eq(orderWithBound.baseToken);
     });
 
-    it("should targetToken be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should targetToken be equal to expected", () => {
       expect(orderInfo["targetToken"]).to.be.eq(orderWithBound.targetToken);
     });
 
-    it("should pairFee be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should pairFee be equal to expected", () => {
       expect(orderInfo["pairFee"]).to.be.eq(orderWithBound.pairFee);
     });
 
-    it("should slippage be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should slippage be equal to expected", () => {
       expect(orderInfo["slippage"]).to.be.eq(orderWithBound.slippage);
     });
 
-    it("should baseAmount be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should baseAmount be equal to expected", () => {
       expect(orderInfo["baseAmount"]).to.be.eq(orderWithBound.baseAmount);
     });
 
-    it("should aimTargetTokenAmount be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should aimTargetTokenAmount be equal to expected", () => {
       expect(orderInfo["aimTargetTokenAmount"]).to.be.eq(orderWithBound.aimTargetTokenAmount);
     });
 
-    it("should minTargetTokenAmount be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should minTargetTokenAmount be equal to expected", () => {
       expect(orderInfo["minTargetTokenAmount"]).to.be.eq(orderWithBound.minTargetTokenAmount);
     });
 
-    it("should expiration be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should expiration be equal to expected", () => {
       expect(orderInfo["expiration"]).to.be.eq(orderWithBound.expiration);
     });
 
-    it("should boundOrders be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
+    it("should boundOrders be equal to expected", () => {
       expect(orderInfo["boundOrders"]).to.be.deep.eq(orderWithBound.boundOrders);
     });
 
-    it("should baseAmount be equal to expected", async () => {
-      const orderInfo = await tradingPlatform.getOrderInfo(orderId);
-      expect(orderInfo["action"]).to.be.eq(orderWithBound.action);
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo["action"]).to.be.eq(Action.LOSS);
     });
 
     it("should send tokens from user to trading contract", async () => {
@@ -236,6 +227,275 @@ describe("Method: createOrder", () => {
         baseToken,
         [deployer, tradingPlatform.address],
         [`-${orderWithBound.baseAmount}`, orderWithBound.baseAmount]
+      );
+    });
+
+    it("should emit OrderCreated event", async () => {
+      await expect(result).to.emit(tradingPlatform, "OrderCreated").withArgs(orderId, deployer.address);
+    });
+  });
+
+  describe("DCA: When all parameters correct", () => {
+    let result: ContractTransaction;
+    let tradingPlatform: TradingPlatform;
+    let baseToken: MockERC20;
+    let targetToken: MockERC20;
+    let orderDCA: TradingPlatform.OrderStruct;
+    let orderIdBefore: BigNumber;
+    let orderId: BigNumber;
+    let activeOrdersLengthBefore: BigNumber;
+    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let creationTimeStamp: BigNumberish;
+
+    before(async () => {
+      const deploy = await loadFixture(deployTradingPlatform);
+      tradingPlatform = deploy.tradingPlatform;
+      baseToken = deploy.baseToken;
+      targetToken = deploy.targetToken;
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128"],
+        [ethers.utils.parseUnits("1"), 120]
+      );
+
+      orderDCA = {
+        userAddress: deployer.address,
+        baseToken: baseToken.address,
+        targetToken: targetToken.address,
+        pairFee: PAIR_FEE,
+        slippage: SLIPPAGE,
+        baseAmount: baseAmount,
+        aimTargetTokenAmount: 0,
+        minTargetTokenAmount: 0,
+        expiration: 0,
+        boundOrders: [],
+        action: Action.DCA,
+        data,
+      };
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      activeOrdersLengthBefore = await tradingPlatform.activeOrdersLength();
+      orderIdBefore = await tradingPlatform.getOrderCounter();
+      result = await tradingPlatform.createOrder(orderDCA);
+      creationTimeStamp = await time.latest();
+      orderId = await tradingPlatform.getOrderCounter();
+      orderInfo = (await tradingPlatform.getOrdersInfo([orderId]))[0];
+    });
+
+    it("should not reverted", async () => {
+      await expect(result).to.be.not.reverted;
+    });
+
+    it("should increment orderWithBound id", () => {
+      expect(orderIdBefore.add(1)).to.be.eq(orderId);
+    });
+
+    it("should add new orderWithBound to active list", async () => {
+      const orderStatus = await tradingPlatform.isActiveOrderExist(orderId);
+      expect(orderStatus).to.be.true;
+    });
+
+    it("should increment active list", async () => {
+      const activeOrdersLength = await tradingPlatform.activeOrdersLength();
+      expect(activeOrdersLength).to.be.eq(activeOrdersLengthBefore.add(1));
+    });
+
+    it("should add expected orderWithBound id to active list", async () => {
+      const activeOrderId = await tradingPlatform.activeOrderId(0);
+      expect(activeOrderId).to.be.eq(orderId);
+    });
+
+    it("should order list be equal to expected", async () => {
+      const orderStatus = await tradingPlatform.activeOrdersIds(0, 10);
+      expect(orderStatus).to.be.deep.eq([1]);
+    });
+
+    it("should userAddress be equal to expected", () => {
+      expect(orderInfo.order["userAddress"]).to.be.eq(orderDCA.userAddress);
+    });
+
+    it("should baseToken be equal to expected", () => {
+      expect(orderInfo.order["baseToken"]).to.be.eq(orderDCA.baseToken);
+    });
+
+    it("should targetToken be equal to expected", () => {
+      expect(orderInfo.order["targetToken"]).to.be.eq(orderDCA.targetToken);
+    });
+
+    it("should pairFee be equal to expected", () => {
+      expect(orderInfo.order["pairFee"]).to.be.eq(orderDCA.pairFee);
+    });
+
+    it("should slippage be equal to expected", () => {
+      expect(orderInfo.order["slippage"]).to.be.eq(orderDCA.slippage);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["baseAmount"]).to.be.eq(orderDCA.baseAmount);
+    });
+
+    it("should aimTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo.order["aimTargetTokenAmount"]).to.be.eq(orderDCA.aimTargetTokenAmount);
+    });
+
+    it("should minTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo.order["minTargetTokenAmount"]).to.be.eq(orderDCA.minTargetTokenAmount);
+    });
+
+    it("should expiration be equal to expected", () => {
+      expect(orderInfo.order["expiration"]).to.be.eq(orderDCA.expiration);
+    });
+
+    it("should boundOrders be equal to expected", () => {
+      expect(orderInfo.order["boundOrders"]).to.be.deep.eq(orderDCA.boundOrders);
+    });
+
+    it("should data be equal to expected", () => {
+      expect(orderInfo.order["data"]).to.be.deep.eq(orderDCA.data);
+    });
+
+    it("should additionalInformation be equal to expected", () => {
+      expect(orderInfo["additionalInformation"]).to.be.deep.eq(creationTimeStamp);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["action"]).to.be.eq(Action.DCA);
+    });
+
+    it("should send tokens from user to trading contract", async () => {
+      await expect(result).to.changeTokenBalances(
+        baseToken,
+        [deployer, tradingPlatform.address],
+        [`-${orderDCA.baseAmount}`, orderDCA.baseAmount]
+      );
+    });
+
+    it("should emit OrderCreated event", async () => {
+      await expect(result).to.emit(tradingPlatform, "OrderCreated").withArgs(orderId, deployer.address);
+    });
+  });
+
+  describe("TRAILING: When all parameters correct", () => {
+    let result: ContractTransaction;
+    let tradingPlatform: TradingPlatform;
+    let baseToken: MockERC20;
+    let targetToken: MockERC20;
+    let orderTrailing: TradingPlatform.OrderStruct;
+    let orderIdBefore: BigNumber;
+    let orderId: BigNumber;
+    let activeOrdersLengthBefore: BigNumber;
+    let orderInfo: TradingPlatform.OrderStruct;
+
+    before(async () => {
+      const deploy = await loadFixture(deployTradingPlatform);
+      tradingPlatform = deploy.tradingPlatform;
+      baseToken = deploy.baseToken;
+      targetToken = deploy.targetToken;
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmount, ethers.utils.parseUnits("20"), 5000]
+      );
+      orderTrailing = {
+        userAddress: deployer.address,
+        baseToken: baseToken.address,
+        targetToken: targetToken.address,
+        pairFee: PAIR_FEE,
+        slippage: SLIPPAGE,
+        baseAmount: baseAmount,
+        aimTargetTokenAmount: ethers.utils.parseUnits("50"),
+        minTargetTokenAmount: ethers.utils.parseUnits("45"),
+        expiration: Math.floor(Date.now() / 1000) + 60 * 60,
+        boundOrders: [],
+        action: Action.TRAILING,
+        data,
+      };
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      activeOrdersLengthBefore = await tradingPlatform.activeOrdersLength();
+      orderIdBefore = await tradingPlatform.getOrderCounter();
+      result = await tradingPlatform.createOrder(orderTrailing);
+      orderId = await tradingPlatform.getOrderCounter();
+      orderInfo = (await tradingPlatform.getOrdersInfo([orderId]))[0].order;
+    });
+
+    it("should not reverted", async () => {
+      await expect(result).to.be.not.reverted;
+    });
+
+    it("should increment orderWithBound id", () => {
+      expect(orderIdBefore.add(1)).to.be.eq(orderId);
+    });
+
+    it("should add new orderWithBound to active list", async () => {
+      const orderStatus = await tradingPlatform.isActiveOrderExist(orderId);
+      expect(orderStatus).to.be.true;
+    });
+
+    it("should increment active list", async () => {
+      const activeOrdersLength = await tradingPlatform.activeOrdersLength();
+      expect(activeOrdersLength).to.be.eq(activeOrdersLengthBefore.add(1));
+    });
+
+    it("should add expected orderWithBound id to active list", async () => {
+      const activeOrderId = await tradingPlatform.activeOrderId(0);
+      expect(activeOrderId).to.be.eq(orderId);
+    });
+
+    it("should order list be equal to expected", async () => {
+      const orderStatus = await tradingPlatform.activeOrdersIds(0, 10);
+      expect(orderStatus).to.be.deep.eq([1]);
+    });
+
+    it("should userAddress be equal to expected", () => {
+      expect(orderInfo["userAddress"]).to.be.eq(orderTrailing.userAddress);
+    });
+
+    it("should baseToken be equal to expected", () => {
+      expect(orderInfo["baseToken"]).to.be.eq(orderTrailing.baseToken);
+    });
+
+    it("should targetToken be equal to expected", () => {
+      expect(orderInfo["targetToken"]).to.be.eq(orderTrailing.targetToken);
+    });
+
+    it("should pairFee be equal to expected", () => {
+      expect(orderInfo["pairFee"]).to.be.eq(orderTrailing.pairFee);
+    });
+
+    it("should slippage be equal to expected", () => {
+      expect(orderInfo["slippage"]).to.be.eq(orderTrailing.slippage);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo["baseAmount"]).to.be.eq(orderTrailing.baseAmount);
+    });
+
+    it("should aimTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo["aimTargetTokenAmount"]).to.be.eq(orderTrailing.aimTargetTokenAmount);
+    });
+
+    it("should minTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo["minTargetTokenAmount"]).to.be.eq(orderTrailing.minTargetTokenAmount);
+    });
+
+    it("should expiration be equal to expected", () => {
+      expect(orderInfo["expiration"]).to.be.eq(orderTrailing.expiration);
+    });
+
+    it("should boundOrders be equal to expected", () => {
+      expect(orderInfo["boundOrders"]).to.be.deep.eq(orderTrailing.boundOrders);
+    });
+
+    it("should data be equal to expected", () => {
+      expect(orderInfo["data"]).to.be.deep.eq(orderTrailing.data);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo["action"]).to.be.eq(Action.TRAILING);
+    });
+
+    it("should send tokens from user to trading contract", async () => {
+      await expect(result).to.changeTokenBalances(
+        baseToken,
+        [deployer, tradingPlatform.address],
+        [`-${orderTrailing.baseAmount}`, orderTrailing.baseAmount]
       );
     });
 

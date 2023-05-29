@@ -101,15 +101,15 @@ describe("Method: boundOrders", () => {
     });
 
     it("should bound orders", async () => {
-      const orderOne = await tradingPlatform.getOrderInfo(1);
-      const orderTwo = await tradingPlatform.getOrderInfo(2);
-      const orderThree = await tradingPlatform.getOrderInfo(3);
-      const orderFour = await tradingPlatform.getOrderInfo(4);
+      const orderOne = await tradingPlatform.getOrdersInfo([1]);
+      const orderTwo = await tradingPlatform.getOrdersInfo([2]);
+      const orderThree = await tradingPlatform.getOrdersInfo([3]);
+      const orderFour = await tradingPlatform.getOrdersInfo([4]);
 
-      expect(orderOne["boundOrders"]).to.be.deep.eq([2, 3]);
-      expect(orderTwo["boundOrders"]).to.be.deep.eq([1]);
-      expect(orderThree["boundOrders"]).to.be.deep.eq([1]);
-      expect(orderFour["boundOrders"]).to.be.deep.eq([]);
+      expect(orderOne[0].order["boundOrders"]).to.be.deep.eq([2, 3]);
+      expect(orderTwo[0].order["boundOrders"]).to.be.deep.eq([1]);
+      expect(orderThree[0].order["boundOrders"]).to.be.deep.eq([1]);
+      expect(orderFour[0].order["boundOrders"]).to.be.deep.eq([]);
     });
 
     it("should emit OrdersBounded event", async () => {
