@@ -6,6 +6,8 @@ import "hardhat-gas-reporter";
 import "solidity-coverage";
 import "hardhat-watcher";
 import "hardhat-deploy";
+import "solidity-docgen";
+import "hardhat-docgen";
 
 import "./tasks/index";
 
@@ -136,6 +138,12 @@ const config: HardhatUserConfig = {
     currency: GAS_REPORTER.CURRENCY,
     token: GAS_REPORTER.TOKEN,
     gasPrice: GAS_PRICE,
+  },
+  docgen: {
+    path: "./docs/hardhat",
+    exclude: ["./mocks"],
+    clear: true,
+    runOnCompile: true,
   },
 };
 
