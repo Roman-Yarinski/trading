@@ -9,10 +9,12 @@ const migrate: DeployFunction = async ({ deployments, getNamedAccounts }) => {
 
   const swapHelper = TRADING_PLATFORM.SWAP_HELPER || (await get("SwapHelperUniswapV3")).address;
   const admin = TRADING_PLATFORM.ADMIN || deployer;
+  const protocolFee = TRADING_PLATFORM.PROTOCOL_FEE;
+  const feeRecipient = TRADING_PLATFORM.FEE_RECIPIENT || deployer;
 
   await deploy("TradingPlatform", {
     from: deployer,
-    args: [swapHelper, admin],
+    args: [swapHelper, admin, protocolFee, feeRecipient],
     log: true,
   });
 };

@@ -28,7 +28,9 @@
     },
     "TRADING_PLATFORM": {
       "ADMIN": "ADMIN",
-      "SWAP_HELPER": "SWAP_HELPER"
+      "SWAP_HELPER": "SWAP_HELPER",
+      "PROTOCOL_FEE": "PROTOCOL_FEE",
+      "FEE_RECIPIENT": "FEE_RECIPIENT"
     },
     "SWAP_HELPER": {
       "SWAP_ROUTER": "SWAP_ROUTER",

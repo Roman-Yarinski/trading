@@ -38,6 +38,8 @@ declare module "config" {
     TRADING_PLATFORM: {
       ADMIN: string | null;
       SWAP_HELPER: string | null;
+      PROTOCOL_FEE: number;
+      FEE_RECIPIENT: string | null;
     };
     SWAP_HELPER: {
       SWAP_ROUTER: string;
