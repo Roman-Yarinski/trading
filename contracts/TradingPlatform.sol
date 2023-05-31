@@ -22,26 +22,20 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     uint32 public constant PRECISION = 1000000; // 10000 = 1%
     uint32 public constant MAX_ITERATIONS = 1000;
+    uint32 private secondsAgoDefault = 120;
+    uint32 private protocolFee;
+    address uniswapHelperV3;
+    address private feeRecipient;
 
-    address feeRecipient;
+    EnumerableSet.AddressSet private tokensWhiteList;
+    EnumerableSet.UintSet private activeOrders;
 
-    uint32 _secondsAgoDefault = 120;
-
-    uint32 protocolFee = 10000;
-
-    address _uniswapHelperV3;
-
-    EnumerableSet.AddressSet private _tokensWhiteList;
-    EnumerableSet.UintSet private _activeOrders;
-
-    mapping(uint256 => Order) private orderInfo;
     mapping(uint256 => uint256) private additionalInformation; // orderId => info  last execution time for DCA || last execution price for trailing
     mapping(uint256 => uint256) private resultTokenOut; // orderId => amount of token  Fro DCA and TRAILING
-
-    mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
+    mapping(uint256 => Order) private orderInfo;
     mapping(address => uint256[]) private userOrders; // All orders for user
+    mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
 
-    Counters.Counter private tokenCounter; // How many tokens we are supported
     Counters.Counter private orderCounter; // How many orders we have
 
     struct Order {
@@ -97,18 +91,23 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     /**
      * @notice TODO:
      */
-    constructor(address uniswapHelperV3_, address admin) {
+    constructor(address uniswapHelperV3_, address admin, uint32 protocolFee_, address feeRecipient_) {
         require(uniswapHelperV3_ != address(0), "UniswapHelperV3 zero address");
         require(admin != address(0), "Admin zero address");
+        require(feeRecipient_ != address(0), "Fee recipient zero address");
+        require(protocolFee_ < PRECISION, "Fee is 100% or greater");
+        _setupRole(DEFAULT_ADMIN_ROLE, admin);
         _setupRole(ADMIN_ROLE, admin);
-        _uniswapHelperV3 = uniswapHelperV3_;
+        uniswapHelperV3 = uniswapHelperV3_;
+        protocolFee = protocolFee_;
+        feeRecipient = feeRecipient_;
     }
 
     /**
      * @notice Returns a address of uniswapHelperV3
      */
     function getSwapHelper() external view returns (address) {
-        return _uniswapHelperV3;
+        return uniswapHelperV3;
     }
 
     /**
@@ -119,14 +118,14 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     }
 
     /**
-     * @notice Returns a address of feeRecipient
+     * @notice Returns a protocol fee percent
      */
     function getProtocolFee() external view returns (uint32) {
         return protocolFee;
     }
 
     /**
-     * @notice Returns a address of feeRecipient
+     * @notice Seting protocol fee percent
      */
     function setProtocolFee(uint32 newProtocolFee) external {
         // TODO: add role
@@ -135,7 +134,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     }
 
     function getTokenStatus(address token) external view returns (bool) {
-        return _tokensWhiteList.contains(token);
+        return tokensWhiteList.contains(token);
     }
 
     function getUserOrdersIds(address userAddress) external view returns (uint256[] memory) {
@@ -167,7 +166,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
                 orderInfo[ordersIds[i]],
                 additionalInformation[ordersIds[i]],
                 resultTokenOut[ordersIds[i]],
-                _activeOrders.contains(ordersIds[i])
+                activeOrders.contains(ordersIds[i])
             );
         }
         return orders;
@@ -178,14 +177,14 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
      * @param orderId Order id
      */
     function isActiveOrderExist(uint256 orderId) external view returns (bool) {
-        return _activeOrders.contains(orderId);
+        return activeOrders.contains(orderId);
     }
 
     /**
      * @notice Returns a payment tokens count
      */
     function activeOrdersLength() external view returns (uint256) {
-        return _activeOrders.length();
+        return activeOrders.length();
     }
 
     /**
@@ -193,8 +192,8 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
      * @param itemId Index in active orders list
      */
     function activeOrderId(uint256 itemId) external view returns (uint256) {
-        require(itemId < _activeOrders.length(), "Invalid token id");
-        return _activeOrders.at(itemId);
+        require(itemId < activeOrders.length(), "Invalid token id");
+        return activeOrders.at(itemId);
     }
 
     /**
@@ -203,27 +202,27 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
      * @param limit Number of items requested
      */
     function activeOrdersIds(uint256 offset, uint256 limit) external view returns (uint256[] memory ordersIds) {
-        uint256 ordersCount = _activeOrders.length();
+        uint256 ordersCount = activeOrders.length();
         if (offset >= ordersCount) return new uint256[](0);
         uint256 to = offset + limit;
         if (ordersCount < to) to = ordersCount;
         ordersIds = new uint256[](to - offset);
-        for (uint256 i = 0; i < ordersIds.length; i++) ordersIds[i] = _activeOrders.at(offset + i);
+        for (uint256 i = 0; i < ordersIds.length; i++) ordersIds[i] = activeOrders.at(offset + i);
     }
 
     function addTokensToWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
         for (uint256 i = 0; i < tokens.length; i++) {
             require(tokens[i] != address(0), "Token zero address check");
-            if (_tokensWhiteList.contains(tokens[i])) continue;
-            _tokensWhiteList.add(tokens[i]);
+            if (tokensWhiteList.contains(tokens[i])) continue;
+            tokensWhiteList.add(tokens[i]);
             emit TokenAdded(tokens[i]);
         }
     }
 
     function removeTokensFromWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
         for (uint256 i = 0; i < tokens.length; i++) {
-            if (!_tokensWhiteList.contains(tokens[i])) continue;
-            _tokensWhiteList.remove(tokens[i]);
+            if (!tokensWhiteList.contains(tokens[i])) continue;
+            tokensWhiteList.remove(tokens[i]);
             emit TokenRemoved(tokens[i]);
         }
     }
@@ -241,7 +240,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             require(order.expiration > block.timestamp, "Wrong expiration date");
         }
         require(
-            _tokensWhiteList.contains(order.baseToken) && _tokensWhiteList.contains(order.targetToken),
+            tokensWhiteList.contains(order.baseToken) && tokensWhiteList.contains(order.targetToken),
             "Token not allowed"
         );
         // require(action != Action.LOSS || targetPrice > 0, "Minimum amount out must be greater than 0");
@@ -259,16 +258,17 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
             require(decodedData.fixingPerStep > 0, "Zero amount to swap");
             require(decodedData.baseAmount == order.baseAmount, "Wrong base amount");
-            require(decodedData.step > 0, "Wrong base amount");
+            require(decodedData.step > 0, "Wrong step amount");
         }
         if (order.boundOrder != 0) {
-            require(order.action != Action.DCA, "Can't bound DCA order");
-            require(orderInfo[order.boundOrder].userAddress == msg.sender, "Bound order is not yours");
-            require(_activeOrders.contains(order.boundOrder), "Bound order is not active");
-            require(orderInfo[order.boundOrder].boundOrder == 0, "Bound order already bounded");
+            Order memory boundOrder = orderInfo[order.boundOrder];
+            require(order.action != Action.DCA && boundOrder.action != Action.DCA, "Can't bound DCA order");
+            require(boundOrder.userAddress == msg.sender, "Bound order is not yours");
+            require(activeOrders.contains(order.boundOrder), "Bound order is not active");
+            require(boundOrder.boundOrder == 0, "Bound order already bounded");
             orderInfo[order.boundOrder].boundOrder = orderId;
         }
-        _activeOrders.add(orderId);
+        activeOrders.add(orderId);
         userOrders[msg.sender].push(orderId);
         orderInfo[orderId] = order;
 
@@ -285,7 +285,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     }
 
     function deposit(address token, uint256 amount) external returns (bool) {
-        require(_tokensWhiteList.contains(token), "Token not allowed");
+        require(tokensWhiteList.contains(token), "Token not allowed");
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         balances[msg.sender][token] += amount;
         emit Deposited(msg.sender, token, amount);
@@ -310,8 +310,10 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             orderInfo[leftOrderId].action != Action.DCA && orderInfo[rightOrderId].action != Action.DCA,
             "Can't bound DCA"
         );
-        require(orderInfo[leftOrderId].boundOrder == 0, "Left order already bounded");
-        require(orderInfo[rightOrderId].boundOrder == 0, "Right order already bounded");
+        require(
+            orderInfo[leftOrderId].boundOrder == 0 && orderInfo[rightOrderId].boundOrder == 0,
+            "Orders already bounded"
+        );
         orderInfo[leftOrderId].boundOrder = rightOrderId;
         orderInfo[rightOrderId].boundOrder = leftOrderId;
         emit OrdersBounded(leftOrderId, rightOrderId);
@@ -319,13 +321,13 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
     function shouldRebalance() public view returns (uint256[] memory) {
         //get Active Orders
-        uint256 ordersCount = _activeOrders.length(); // TODO: -1 ?
-        uint256 to = MAX_ITERATIONS;
-        if (ordersCount < to) to = ordersCount;
-        uint256[] memory ordersIds = new uint256[](to);
+        uint256 ordersCount = activeOrders.length(); // TODO: -1 ?
+        // uint256 to = MAX_ITERATIONS;
+        // if (ordersCount < to) to = ordersCount;
+        uint256[] memory ordersIds = new uint256[](ordersCount);
         uint256 skipped = 0;
-        for (uint256 i = 0; i < to; i++) {
-            uint256 orderId = _activeOrders.at(i);
+        for (uint256 i = 0; i < ordersCount; i++) {
+            uint256 orderId = activeOrders.at(i);
             if (checkOrder(orderId)) {
                 ordersIds[i - skipped] = orderId;
             } else {
@@ -333,7 +335,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             }
         }
         if (skipped > 0) {
-            uint256 newLength = to - skipped;
+            uint256 newLength = ordersCount - skipped;
             assembly {
                 mstore(ordersIds, newLength)
             }
@@ -370,12 +372,12 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         uint128 amountToSwap = order.baseAmount;
         if (order.action == Action.TRAILING) {
             TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
-            uint256 expectedAmountOut = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
+            uint256 expectedAmountOut = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
                 order.baseToken,
                 order.targetToken,
                 decodedData.baseAmount,
                 order.pairFee,
-                _secondsAgoDefault
+                secondsAgoDefault
             );
             uint256 lastBuyingAmountOut = additionalInformation[orderId];
             if (
@@ -383,7 +385,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
                 expectedAmountOut >= lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step)
             ) {
                 if (decodedData.fixingPerStep > order.baseAmount) {
-                    _activeOrders.remove(orderId); //update active orders set
+                    activeOrders.remove(orderId); //update active orders set
                 } else {
                     // update storage only if this info will be needed in future
                     amountToSwap = decodedData.fixingPerStep;
@@ -392,31 +394,31 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
                 }
             } else if (expectedAmountOut < lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)) {
                 amountToSwap = order.baseAmount;
-                _activeOrders.remove(orderId); //update active orders set
+                activeOrders.remove(orderId); //update active orders set
             }
         } else if (order.action == Action.DCA) {
             DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
             amountToSwap = decodedData.amountPerPeriod;
             if (decodedData.amountPerPeriod > order.baseAmount) {
                 amountToSwap = order.baseAmount;
-                _activeOrders.remove(orderId); //update active orders set
+                activeOrders.remove(orderId); //update active orders set
             } else {
                 // update storage only if this info will be needed in future
                 additionalInformation[orderId] = block.timestamp;
                 orderInfo[orderId].baseAmount -= amountToSwap;
             }
         } else if (order.action == Action.LOSS || order.action == Action.PROFIT) {
-            _activeOrders.remove(orderId); //update active orders set
+            activeOrders.remove(orderId); //update active orders set
             if (order.boundOrder != 0) {
-                if (_activeOrders.contains(order.boundOrder)) {
+                if (activeOrders.contains(order.boundOrder)) {
                     Order memory boundOrder = orderInfo[order.boundOrder];
-                    _activeOrders.remove(order.boundOrder);
+                    activeOrders.remove(order.boundOrder);
                     balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
                 } // remove all bound orders and refund tokens to user balance
             }
         }
-        IERC20(order.baseToken).approve(_uniswapHelperV3, amountToSwap);
-        uint256 amountOut = ISwapHelperUniswapV3(_uniswapHelperV3).swap( // TODO: add user slippage ?
+        IERC20(order.baseToken).approve(uniswapHelperV3, amountToSwap);
+        uint256 amountOut = ISwapHelperUniswapV3(uniswapHelperV3).swap( // TODO: add user slippage ?
             order.userAddress,
             order.baseToken,
             order.targetToken,
@@ -434,10 +436,10 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
 
     function cancelOrders(uint256[] memory ordersIds) external {
         for (uint256 i = 0; i < ordersIds.length; i++) {
-            if (!_activeOrders.contains(ordersIds[i])) continue;
+            if (!activeOrders.contains(ordersIds[i])) continue;
             Order memory order = orderInfo[ordersIds[i]];
             require(order.userAddress == msg.sender, "Not your order");
-            _activeOrders.remove(ordersIds[i]);
+            activeOrders.remove(ordersIds[i]);
             balances[order.userAddress][order.baseToken] += order.baseAmount;
             emit OrderCanceled(ordersIds[i]);
         }
@@ -448,7 +450,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     }
 
     function checkOrder(uint256 orderId) public view returns (bool) {
-        if (!_activeOrders.contains(orderId)) return false; // Not active
+        if (!activeOrders.contains(orderId)) return false; // Not active
         Order memory order = orderInfo[orderId];
         if ((order.action != Action.DCA || order.action != Action.TRAILING) && order.expiration < block.timestamp) {
             return false;
@@ -460,12 +462,12 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         }
         if (order.action == Action.TRAILING) {
             TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
-            uint256 expectedAmountOutForTrailing = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
+            uint256 expectedAmountOutForTrailing = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
                 order.baseToken,
                 order.targetToken,
                 decodedData.baseAmount,
                 order.pairFee,
-                _secondsAgoDefault
+                secondsAgoDefault
             );
             uint256 lastBuyingAmountOut = additionalInformation[orderId];
             if (
@@ -477,12 +479,12 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
                         lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)))
             ) return true;
         }
-        uint256 expectedAmountOut = ISwapHelperUniswapV3(_uniswapHelperV3).getAmountOut(
+        uint256 expectedAmountOut = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
             order.baseToken,
             order.targetToken,
             order.baseAmount,
             order.pairFee,
-            _secondsAgoDefault
+            secondsAgoDefault
         );
         if (
             order.action == Action.LOSS &&
