@@ -2,162 +2,202 @@
 
 pragma solidity 0.8.12;
 
+import {ITradingPlatform} from "./interfaces/ITradingPlatform.sol";
 import {IERC20WithDecimals} from "./interfaces/IERC20WithDecimals.sol";
 import {ISwapHelperUniswapV3} from "./interfaces/ISwapHelperUniswapV3.sol";
 import {Counters} from "@openzeppelin/contractsV4/utils/Counters.sol";
-import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/interfaces/AutomationCompatibleInterface.sol";
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contractsV4/token/ERC20/utils/SafeERC20.sol";
 import {AccessControlEnumerable, EnumerableSet} from "@openzeppelin/contractsV4/access/AccessControlEnumerable.sol";
 
 /**
- * @title The contract implements the token trading platform
+ * @title The contract implements the token trading platform with different trading tools
  */
-contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerable {
+contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
     using EnumerableSet for EnumerableSet.UintSet;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
-    uint32 public constant PRECISION = 1000000; // 10000 = 1%
-    uint32 public constant MAX_ITERATIONS = 1000;
-    uint32 private secondsAgoDefault = 120;
-    uint32 private protocolFee;
-    address uniswapHelperV3;
-    address private feeRecipient;
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE"); // Representing the admin role.
+    uint32 public constant PRECISION = 1000000; // Precision constant used for percentage calculations. Represents the decimal precision up to six decimal places.
 
-    EnumerableSet.AddressSet private tokensWhiteList;
-    EnumerableSet.UintSet private activeOrders;
+    uint32 private secondsAgoDefault = 120; // Default value for the number of seconds ago used in average price calculations.
+    uint32 private protocolFee; //  Protocol fee applied to certain operations in the contract. Represents the fee percentage applied to specific operations within the contract.
+    address private uniswapHelperV3; // Address of the Uniswap helper contract (version 3) used for swaps.
+    address private feeRecipient; // Address of the recipient of protocol fees.  Represents the address where the protocol fees are sent to.
 
-    mapping(uint256 => uint256) private additionalInformation; // orderId => info  last execution time for DCA || last execution price for trailing
-    mapping(uint256 => uint256) private resultTokenOut; // orderId => amount of token  Fro DCA and TRAILING
-    mapping(uint256 => Order) private orderInfo;
-    mapping(address => uint256[]) private userOrders; // All orders for user
-    mapping(address => mapping(address => uint256)) private balances; // UserAddress -> TokenAddress -> Amount
+    mapping(uint256 => uint256) private additionalInformation; // Mapping to store additional information related to orders. Used to store the last execution time for DCA orders or the last execution price for trailing orders.
+    mapping(uint256 => uint256) private resultTokenOut; // Mapping to store the result token output for orders. aps the order ID to the amount of token received as a result of executing the order.
+    mapping(uint256 => Order) private orderInfo; // Mapping to store order information. Maps the order ID to the order struct, containing detailed order information.
+    mapping(address => uint256[]) private userOrders; //  Mapping to store user orders. Maps the user's address to an array of order IDs representing all the orders associated with the user.
+    mapping(address => mapping(address => uint256)) private balances; // Maps the user's address to a mapping of token addresses and their corresponding balances.
 
-    Counters.Counter private orderCounter; // How many orders we have
-
-    struct Order {
-        address userAddress;
-        address baseToken;
-        address targetToken;
-        uint24 pairFee;
-        uint24 slippage;
-        uint128 baseAmount;
-        uint128 aimTargetTokenAmount;
-        uint128 minTargetTokenAmount; // minTargetTokenAmount < aimTargetTokenAmount if sell && minTargetTokenAmount > aimTargetTokenAmount if buy
-        uint256 expiration;
-        uint256 boundOrder;
-        Action action;
-        bytes data; // additional data for different orders types
-    }
-
-    struct OrderInfo {
-        uint256 id;
-        Order order;
-        uint256 additionalInformation; // last execution time for DCA || last execution price for trailing
-        uint256 resultTokenOut;
-        bool status;
-    }
-
-    struct TrailingOrderData {
-        uint128 baseAmount; // duplicatecate for calculation
-        uint128 fixingPerStep; // amount of base token for fixing on each step
-        uint24 step; // step in percents
-    }
-
-    struct DCAOrderData {
-        uint128 period; // period of buying
-        uint128 amountPerPeriod; // amount of baseToken for spend per period
-    }
-
-    enum Action {
-        LOSS,
-        PROFIT,
-        DCA,
-        TRAILING
-    }
-
-    event Deposited(address operator, address token, uint256 amount);
-    event OrderCreated(uint256 orderId, address userAddress);
-    event OrderExecuted(uint256 orderId, address validator);
-    event Withdrawed(address operator, address token, uint256 amount);
-    event TokenAdded(address token);
-    event TokenRemoved(address token);
-    event OrdersBounded(uint256 leftOrderId, uint256 rightOrderId);
-    event OrderCanceled(uint256 orderId);
+    Counters.Counter private orderCounter; // Counter to keep track of the number of orders. sed to count the total number of orders in the contract.
+    EnumerableSet.AddressSet private tokensWhiteList; // Set of tokens in the whitelist. Contains the addresses of tokens that are allowed within the contract.
+    EnumerableSet.UintSet private activeOrders; // Set of active orders. Contains the IDs of the currently active orders within the contract.
 
     /**
-     * @notice TODO:
+     * @dev See {ITradingPlatform}
      */
-    constructor(address uniswapHelperV3_, address admin, uint32 protocolFee_, address feeRecipient_) {
-        require(uniswapHelperV3_ != address(0), "UniswapHelperV3 zero address");
-        require(admin != address(0), "Admin zero address");
-        require(feeRecipient_ != address(0), "Fee recipient zero address");
-        require(protocolFee_ < PRECISION, "Fee is 100% or greater");
-        _setupRole(DEFAULT_ADMIN_ROLE, admin);
-        _setupRole(ADMIN_ROLE, admin);
-        uniswapHelperV3 = uniswapHelperV3_;
-        protocolFee = protocolFee_;
-        feeRecipient = feeRecipient_;
+    function activeOrdersLength() external view returns (uint256) {
+        return activeOrders.length();
     }
 
     /**
-     * @notice Returns a address of uniswapHelperV3
+     * @dev See {ITradingPlatform}
      */
-    function getSwapHelper() external view returns (address) {
-        return uniswapHelperV3;
+    function activeOrderId(uint256 itemId) external view returns (uint256) {
+        require(itemId < activeOrders.length(), "Invalid token id");
+        return activeOrders.at(itemId);
     }
 
     /**
-     * @notice Returns a address of feeRecipient
+     * @dev See {ITradingPlatform}
+     */
+    function activeOrdersIds(uint256 offset, uint256 limit) external view returns (uint256[] memory ordersIds) {
+        uint256 ordersCount = activeOrders.length();
+        if (offset >= ordersCount) return new uint256[](0);
+        uint256 to = offset + limit;
+        if (ordersCount < to) to = ordersCount;
+        ordersIds = new uint256[](to - offset);
+        for (uint256 i = 0; i < ordersIds.length; i++) ordersIds[i] = activeOrders.at(offset + i);
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData) {
+        uint256[] memory ordersIds = shouldRebalance();
+        upkeepNeeded = ordersIds.length > 0;
+        performData = abi.encode(ordersIds);
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
      */
     function getFeeRecipient() external view returns (address) {
         return feeRecipient;
     }
 
     /**
-     * @notice Returns a protocol fee percent
+     * @dev See {ITradingPlatform}
+     */
+    function getOrderCounter() external view returns (uint256) {
+        return orderCounter.current();
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
      */
     function getProtocolFee() external view returns (uint32) {
         return protocolFee;
     }
 
     /**
-     * @notice Seting protocol fee percent
+     * @dev See {ITradingPlatform}
      */
-    function setProtocolFee(uint32 newProtocolFee) external {
-        // TODO: add role
-        require(newProtocolFee < PRECISION);
-        protocolFee = newProtocolFee;
+    function getResultTokenOut(uint256 orderId) external view returns (uint256) {
+        return resultTokenOut[orderId];
     }
 
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function getSwapHelper() external view returns (address) {
+        return uniswapHelperV3;
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function getTokenStatus(address token) external view returns (bool) {
         return tokensWhiteList.contains(token);
     }
 
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function getUserBalance(address user, address token) external view returns (uint256) {
+        return balances[user][token];
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function getUserOrdersIds(address userAddress) external view returns (uint256[] memory) {
         return userOrders[userAddress];
     }
 
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function getUserOrdersInfo(address userAddress) external view returns (OrderInfo[] memory) {
         uint256[] memory userOrdersIds = userOrders[userAddress];
         return getOrdersInfo(userOrdersIds);
     }
 
-    function getUserBalance(address user, address token) external view returns (uint256) {
-        return balances[user][token];
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function isActiveOrderExist(uint256 orderId) external view returns (bool) {
+        return activeOrders.contains(orderId);
     }
 
-    function getResultTokenOut(uint256 orderId) external view returns (uint256) {
-        return resultTokenOut[orderId];
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function checkOrder(uint256 orderId) public view returns (bool) {
+        if (!activeOrders.contains(orderId)) return false; // Not active
+        Order memory order = orderInfo[orderId];
+        if ((order.action != Action.DCA || order.action != Action.TRAILING) && order.expiration < block.timestamp) {
+            return false;
+        }
+        if (order.action == Action.DCA) {
+            DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
+            if (block.timestamp >= decodedData.period + additionalInformation[orderId]) return true;
+            return false;
+        }
+        if (order.action == Action.TRAILING) {
+            TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
+            uint256 expectedAmountOutForTrailing = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
+                order.baseToken,
+                order.targetToken,
+                decodedData.baseAmount,
+                order.pairFee,
+                secondsAgoDefault
+            );
+            uint256 lastBuyingAmountOut = additionalInformation[orderId];
+            if (
+                (lastBuyingAmountOut == 0 && expectedAmountOutForTrailing >= order.aimTargetTokenAmount) ||
+                (lastBuyingAmountOut != 0 && // true
+                    (expectedAmountOutForTrailing >=
+                        lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step) ||
+                        expectedAmountOutForTrailing <
+                        lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)))
+            ) return true;
+        }
+        uint256 expectedAmountOut = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
+            order.baseToken,
+            order.targetToken,
+            order.baseAmount,
+            order.pairFee,
+            secondsAgoDefault
+        );
+        if (
+            order.action == Action.LOSS &&
+            expectedAmountOut <= order.aimTargetTokenAmount &&
+            expectedAmountOut > order.minTargetTokenAmount
+        ) return true;
+        if (order.action == Action.PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) {
+            return true;
+        }
+        return false;
     }
 
-    function getOrderCounter() external view returns (uint256) {
-        return orderCounter.current();
-    }
-
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function getOrdersInfo(uint256[] memory ordersIds) public view returns (OrderInfo[] memory orders) {
         orders = new OrderInfo[](ordersIds.length);
         for (uint256 i = 0; i < ordersIds.length; i++) {
@@ -173,43 +213,55 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
     }
 
     /**
-     * @notice Returns a boolean indicating whether the payment token exists
-     * @param orderId Order id
+     * @dev See {ITradingPlatform}
      */
-    function isActiveOrderExist(uint256 orderId) external view returns (bool) {
-        return activeOrders.contains(orderId);
+    function shouldRebalance() public view returns (uint256[] memory) {
+        //get Active Orders
+        uint256 ordersCount = activeOrders.length(); // TODO: -1 ?
+        uint256[] memory ordersIds = new uint256[](ordersCount);
+        uint256 skipped = 0;
+        for (uint256 i = 0; i < ordersCount; i++) {
+            uint256 orderId = activeOrders.at(i);
+            if (checkOrder(orderId)) {
+                ordersIds[i - skipped] = orderId;
+            } else {
+                skipped++;
+            }
+        }
+        if (skipped > 0) {
+            uint256 newLength = ordersCount - skipped;
+            assembly {
+                mstore(ordersIds, newLength)
+            }
+        }
+        return ordersIds;
     }
 
     /**
-     * @notice Returns a payment tokens count
+     * @notice Initializes the TradingPlatform contract with the specified parameters.
+     * @param uniswapHelperV3_ The address of the UniswapHelperV3 contract.
+     * @param admin The address of the contract admin.
+     * @param protocolFee_ The protocol fee percentage, represented as a decimal with 6 digits precision.
+     * @param feeRecipient_ The address where the protocol fees will be sent to.
+     * @dev The UniswapHelperV3 address, admin address, and fee recipient address must not be zero addresses.
+     * @dev The protocol fee must be less than 100% (represented as 1,000,000 in 6 digits precision).
+     * @dev Sets the DEFAULT_ADMIN_ROLE and ADMIN_ROLE roles to the admin address.
      */
-    function activeOrdersLength() external view returns (uint256) {
-        return activeOrders.length();
+    constructor(address uniswapHelperV3_, address admin, uint32 protocolFee_, address feeRecipient_) {
+        require(uniswapHelperV3_ != address(0), "UniswapHelperV3 zero address");
+        require(admin != address(0), "Admin zero address");
+        require(feeRecipient_ != address(0), "Fee recipient zero address");
+        require(protocolFee_ < PRECISION, "Fee is 100% or greater");
+        _setupRole(DEFAULT_ADMIN_ROLE, admin);
+        _setupRole(ADMIN_ROLE, admin);
+        uniswapHelperV3 = uniswapHelperV3_;
+        protocolFee = protocolFee_;
+        feeRecipient = feeRecipient_;
     }
 
     /**
-     * @notice Returns a active order by index
-     * @param itemId Index in active orders list
+     * @dev See {ITradingPlatform}
      */
-    function activeOrderId(uint256 itemId) external view returns (uint256) {
-        require(itemId < activeOrders.length(), "Invalid token id");
-        return activeOrders.at(itemId);
-    }
-
-    /**
-     * @notice Returns a payment tokens by pagination params
-     * @param offset Number of skipped elements
-     * @param limit Number of items requested
-     */
-    function activeOrdersIds(uint256 offset, uint256 limit) external view returns (uint256[] memory ordersIds) {
-        uint256 ordersCount = activeOrders.length();
-        if (offset >= ordersCount) return new uint256[](0);
-        uint256 to = offset + limit;
-        if (ordersCount < to) to = ordersCount;
-        ordersIds = new uint256[](to - offset);
-        for (uint256 i = 0; i < ordersIds.length; i++) ordersIds[i] = activeOrders.at(offset + i);
-    }
-
     function addTokensToWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
         for (uint256 i = 0; i < tokens.length; i++) {
             require(tokens[i] != address(0), "Token zero address check");
@@ -219,15 +271,46 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         }
     }
 
-    function removeTokensFromWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            if (!tokensWhiteList.contains(tokens[i])) continue;
-            tokensWhiteList.remove(tokens[i]);
-            emit TokenRemoved(tokens[i]);
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function boundOrders(uint256 leftOrderId, uint256 rightOrderId) external {
+        require(leftOrderId != 0 && rightOrderId != 0 && leftOrderId != rightOrderId, "Non-compatible orders");
+        require(
+            orderInfo[leftOrderId].userAddress == msg.sender && orderInfo[rightOrderId].userAddress == msg.sender,
+            "Not your order"
+        );
+        require(
+            orderInfo[leftOrderId].action != Action.DCA && orderInfo[rightOrderId].action != Action.DCA,
+            "Can't bound DCA"
+        );
+        require(
+            orderInfo[leftOrderId].boundOrder == 0 && orderInfo[rightOrderId].boundOrder == 0,
+            "Orders already bounded"
+        );
+        orderInfo[leftOrderId].boundOrder = rightOrderId;
+        orderInfo[rightOrderId].boundOrder = leftOrderId;
+        emit OrdersBounded(leftOrderId, rightOrderId);
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function cancelOrders(uint256[] memory ordersIds) external {
+        for (uint256 i = 0; i < ordersIds.length; i++) {
+            if (!activeOrders.contains(ordersIds[i])) continue;
+            Order memory order = orderInfo[ordersIds[i]];
+            require(order.userAddress == msg.sender, "Not your order");
+            activeOrders.remove(ordersIds[i]);
+            balances[order.userAddress][order.baseToken] += order.baseAmount;
+            emit OrderCanceled(ordersIds[i]);
         }
     }
 
-    function createOrder(Order memory order) external returns (uint256 orderId) {
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function createOrder(Order memory order) external returns (uint256) {
         // TODO: add checks
         require(order.userAddress == msg.sender, "Wrong user address");
         require(order.baseToken != address(0), "Zero address check");
@@ -249,7 +332,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         //     "Take profit amount out must be greater than 0 for TakeProfit orders"
         // );
         orderCounter.increment();
-        orderId = orderCounter.current();
+        uint256 orderId = orderCounter.current();
         if (order.action == Action.DCA) {
             DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
             require(decodedData.amountPerPeriod > 0, "Zero amount to swap");
@@ -284,6 +367,9 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return orderId;
     }
 
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function deposit(address token, uint256 amount) external returns (bool) {
         require(tokensWhiteList.contains(token), "Token not allowed");
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -292,71 +378,9 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return true;
     }
 
-    function withdraw(address token, uint256 amount) external returns (bool) {
-        require(balances[msg.sender][token] >= amount, "Amount exceed balance");
-        balances[msg.sender][token] -= amount;
-        IERC20(token).safeTransfer(msg.sender, amount);
-        emit Withdrawed(msg.sender, token, amount);
-        return true;
-    }
-
-    function boundOrders(uint256 leftOrderId, uint256 rightOrderId) external {
-        require(leftOrderId != 0 && rightOrderId != 0 && leftOrderId != rightOrderId, "Non-compatible orders");
-        require(
-            orderInfo[leftOrderId].userAddress == msg.sender && orderInfo[rightOrderId].userAddress == msg.sender,
-            "Not your order"
-        );
-        require(
-            orderInfo[leftOrderId].action != Action.DCA && orderInfo[rightOrderId].action != Action.DCA,
-            "Can't bound DCA"
-        );
-        require(
-            orderInfo[leftOrderId].boundOrder == 0 && orderInfo[rightOrderId].boundOrder == 0,
-            "Orders already bounded"
-        );
-        orderInfo[leftOrderId].boundOrder = rightOrderId;
-        orderInfo[rightOrderId].boundOrder = leftOrderId;
-        emit OrdersBounded(leftOrderId, rightOrderId);
-    }
-
-    function shouldRebalance() public view returns (uint256[] memory) {
-        //get Active Orders
-        uint256 ordersCount = activeOrders.length(); // TODO: -1 ?
-        // uint256 to = MAX_ITERATIONS;
-        // if (ordersCount < to) to = ordersCount;
-        uint256[] memory ordersIds = new uint256[](ordersCount);
-        uint256 skipped = 0;
-        for (uint256 i = 0; i < ordersCount; i++) {
-            uint256 orderId = activeOrders.at(i);
-            if (checkOrder(orderId)) {
-                ordersIds[i - skipped] = orderId;
-            } else {
-                skipped++;
-            }
-        }
-        if (skipped > 0) {
-            uint256 newLength = ordersCount - skipped;
-            assembly {
-                mstore(ordersIds, newLength)
-            }
-        }
-        return ordersIds;
-    }
-
-    function checkUpkeep(
-        bytes calldata /* checkData */
-    ) external view returns (bool upkeepNeeded, bytes memory performData) {
-        uint256[] memory ordersIds = shouldRebalance();
-        upkeepNeeded = ordersIds.length > 0;
-        performData = abi.encode(ordersIds);
-    }
-
-    function performUpkeep(bytes calldata performData) external {
-        uint256[] memory ordersIds = abi.decode(performData, (uint256[]));
-        require(ordersIds.length > 0, "Nothing for execution");
-        executeOrders(ordersIds);
-    }
-
+    /**
+     * @dev See {ITradingPlatform}
+     */
     function executeOrders(uint256[] memory ordersIds) public returns (bool) {
         for (uint256 i = 0; i < ordersIds.length; i++) {
             if (!checkOrder(ordersIds[i])) {
@@ -367,6 +391,52 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         return true;
     }
 
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function performUpkeep(bytes calldata performData) external {
+        uint256[] memory ordersIds = abi.decode(performData, (uint256[]));
+        require(ordersIds.length > 0, "Nothing for execution");
+        executeOrders(ordersIds);
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function removeTokensFromWhitelist(address[] memory tokens) external onlyRole(ADMIN_ROLE) {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            if (!tokensWhiteList.contains(tokens[i])) continue;
+            tokensWhiteList.remove(tokens[i]);
+            emit TokenRemoved(tokens[i]);
+        }
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function setProtocolFee(uint32 newProtocolFee) external {
+        // TODO: add role
+        require(newProtocolFee < PRECISION);
+        protocolFee = newProtocolFee;
+    }
+
+    /**
+     * @dev See {ITradingPlatform}
+     */
+    function withdraw(address token, uint256 amount) external returns (bool) {
+        require(balances[msg.sender][token] >= amount, "Amount exceed balance");
+        balances[msg.sender][token] -= amount;
+        IERC20(token).safeTransfer(msg.sender, amount);
+        emit Withdrawed(msg.sender, token, amount);
+        return true;
+    }
+
+    /**
+     * @notice Executes an individual order based on the provided order ID.
+     * @param orderId ID of the order to be executed.
+     * @dev This function is internal and should not be called directly from outside the contract.
+     * @dev Emits a {OrderExecuted} event.
+     */
     function executeOrder(uint256 orderId) internal {
         Order memory order = orderInfo[orderId];
         uint128 amountToSwap = order.baseAmount;
@@ -425,7 +495,7 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
             amountToSwap,
             order.pairFee
         );
-        uint256 feeAmount = calculateFee(amountOut);
+        uint256 feeAmount = calculateFee(amountOut, protocolFee);
         if (order.action == Action.LOSS || order.action == Action.PROFIT)
             require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // TODO: order.minTargetTokenAmount < amountOut - feeAmount ?
         balances[feeRecipient][order.targetToken] += feeAmount; // update fee balance
@@ -434,69 +504,21 @@ contract TradingPlatform is AutomationCompatibleInterface, AccessControlEnumerab
         emit OrderExecuted(orderId, msg.sender);
     }
 
-    function cancelOrders(uint256[] memory ordersIds) external {
-        for (uint256 i = 0; i < ordersIds.length; i++) {
-            if (!activeOrders.contains(ordersIds[i])) continue;
-            Order memory order = orderInfo[ordersIds[i]];
-            require(order.userAddress == msg.sender, "Not your order");
-            activeOrders.remove(ordersIds[i]);
-            balances[order.userAddress][order.baseToken] += order.baseAmount;
-            emit OrderCanceled(ordersIds[i]);
-        }
+    /**
+     * @notice Calculates the fee amount based on the given token amount.
+     * @param amount The token amount for which the fee is calculated.
+     * @return uint256 The calculated fee amount.
+     */
+    function calculateFee(uint256 amount, uint32 protocolFeePercent) internal pure returns (uint256) {
+        return (amount * protocolFeePercent) / PRECISION;
     }
 
-    function calculateFee(uint256 amount) public view returns (uint256) {
-        return (amount * protocolFee) / PRECISION;
-    }
-
-    function checkOrder(uint256 orderId) public view returns (bool) {
-        if (!activeOrders.contains(orderId)) return false; // Not active
-        Order memory order = orderInfo[orderId];
-        if ((order.action != Action.DCA || order.action != Action.TRAILING) && order.expiration < block.timestamp) {
-            return false;
-        }
-        if (order.action == Action.DCA) {
-            DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
-            if (block.timestamp >= decodedData.period + additionalInformation[orderId]) return true;
-            return false;
-        }
-        if (order.action == Action.TRAILING) {
-            TrailingOrderData memory decodedData = abi.decode(order.data, (TrailingOrderData));
-            uint256 expectedAmountOutForTrailing = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
-                order.baseToken,
-                order.targetToken,
-                decodedData.baseAmount,
-                order.pairFee,
-                secondsAgoDefault
-            );
-            uint256 lastBuyingAmountOut = additionalInformation[orderId];
-            if (
-                (lastBuyingAmountOut == 0 && expectedAmountOutForTrailing >= order.aimTargetTokenAmount) ||
-                (lastBuyingAmountOut != 0 && // true
-                    (expectedAmountOutForTrailing >=
-                        lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step) ||
-                        expectedAmountOutForTrailing <
-                        lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)))
-            ) return true;
-        }
-        uint256 expectedAmountOut = ISwapHelperUniswapV3(uniswapHelperV3).getAmountOut(
-            order.baseToken,
-            order.targetToken,
-            order.baseAmount,
-            order.pairFee,
-            secondsAgoDefault
-        );
-        if (
-            order.action == Action.LOSS &&
-            expectedAmountOut <= order.aimTargetTokenAmount &&
-            expectedAmountOut > order.minTargetTokenAmount
-        ) return true;
-        if (order.action == Action.PROFIT && expectedAmountOut >= order.aimTargetTokenAmount) {
-            return true;
-        }
-        return false;
-    }
-
+    /**
+     * @notice Calculates the percentage of an amount.
+     * @param amount The base amount.
+     * @param percent The percentage value, represented as a decimal with 6 digits precision.
+     * @return uint256 The calculated percentage amount.
+     */
     function getPercent(uint256 amount, uint24 percent) internal pure returns (uint256) {
         return (amount * percent) / PRECISION;
     }
