@@ -63,6 +63,19 @@ describe("Method: boundOrders", () => {
       Action.PROFIT
     );
 
+    const data = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [120, 100000]);
+    await createOrder(
+      deployer,
+      standardParams.tradingPlatform,
+      standardParams.baseToken,
+      standardParams.targetToken,
+      baseAmount,
+      ethers.utils.parseUnits("50"),
+      ethers.utils.parseUnits("45"),
+      Action.DCA,
+      data
+    );
+
     return standardParams;
   }
 
@@ -96,6 +109,19 @@ describe("Method: boundOrders", () => {
       const { tradingPlatform } = await loadFixture(deployTradingPlatform);
       await expect(tradingPlatform.boundOrders(100, 1)).to.be.revertedWith("Not your order");
       await expect(tradingPlatform.boundOrders(1, 100)).to.be.revertedWith("Not your order");
+    });
+
+    it("When try bound DCA or with DCA", async () => {
+      const { tradingPlatform } = await loadFixture(deployTradingPlatform);
+      await expect(tradingPlatform.boundOrders(6, 1)).to.be.revertedWith("Can't bound DCA");
+      await expect(tradingPlatform.boundOrders(1, 6)).to.be.revertedWith("Can't bound DCA");
+    });
+
+    it("When try bound already bounded or with already bounded", async () => {
+      const { tradingPlatform } = await loadFixture(deployTradingPlatform);
+      await tradingPlatform.boundOrders(1, 3);
+      await expect(tradingPlatform.boundOrders(3, 5)).to.be.revertedWith("Orders already bounded");
+      await expect(tradingPlatform.boundOrders(2, 3)).to.be.revertedWith("Orders already bounded");
     });
   });
 

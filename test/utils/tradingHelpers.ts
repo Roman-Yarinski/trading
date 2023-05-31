@@ -17,6 +17,7 @@ export const PRECISION = 1000000;
 
 export const totalSupply = ethers.utils.parseUnits("10000000000");
 export const baseAmount = ethers.utils.parseUnits("1");
+export const protocolFee = 10000; // 1%
 
 export enum Action {
   LOSS,
@@ -56,7 +57,11 @@ export async function createOrder(
   return order;
 }
 
-export async function standardPrepare(operator: SignerWithAddress, admin: SignerWithAddress) {
+export async function standardPrepare(
+  operator: SignerWithAddress,
+  admin: SignerWithAddress,
+  feeRecipient: string = admin.address
+) {
   const TokenInstance = await ethers.getContractFactory("MockERC20");
   const TradingPlatformInstance = await ethers.getContractFactory("TradingPlatform");
   const SwapHelperV3Instance = await ethers.getContractFactory("SwapHelperUniswapV3");
@@ -65,7 +70,12 @@ export async function standardPrepare(operator: SignerWithAddress, admin: Signer
   const factory = await ethers.getContractAt("IUniswapV3Factory", FACTORY);
   const liquidityProvider = await LiquidityInstance.deploy();
   const swapHelperContract = await SwapHelperV3Instance.deploy(SWAP_ROUTER, FACTORY, 10000, SECONDS_AGO);
-  const tradingPlatform = await TradingPlatformInstance.deploy(swapHelperContract.address, admin.address);
+  const tradingPlatform = await TradingPlatformInstance.deploy(
+    swapHelperContract.address,
+    admin.address,
+    protocolFee,
+    feeRecipient
+  );
 
   const mintAmount0 = ethers.utils.parseUnits("100000");
   const mintAmount1 = ethers.utils.parseUnits("100000");

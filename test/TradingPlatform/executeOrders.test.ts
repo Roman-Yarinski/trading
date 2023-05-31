@@ -25,8 +25,8 @@ async function preparePairAndContracts() {
 describe("Method: executeOrders", () => {
   // describe.only("Calculate data ", () => {
   //   it("should calculate data for TRAILING", () => {
-  //     const baseAmountForTRAILING = "1500000000000000000";
-  //     const amountToSpendForPeriod = ethers.utils.parseUnits("0.5");
+  //     const baseAmountForTRAILING = "1000000000000000000000";
+  //     const amountToSpendForPeriod = ethers.utils.parseUnits("100");
   //     const step = 50000; // 5%
 
   //     const data = ethers.utils.defaultAbiCoder.encode(
@@ -38,8 +38,8 @@ describe("Method: executeOrders", () => {
   //   });
 
   //   it("should calculate data for DCA", () => {
-  //     const amountToSpendForPeriod = ethers.utils.parseUnits("10");
-  //     const period = 3600;
+  //     const amountToSpendForPeriod = ethers.utils.parseUnits("1000");
+  //     const period = 604800;
 
   //     const data = ethers.utils.defaultAbiCoder.encode(
   //       ["uint128", "uint128"],
@@ -56,6 +56,44 @@ describe("Method: executeOrders", () => {
 
       const executeOrders = await tradingPlatform.executeOrders([1]);
       await expect(executeOrders).to.be.not.reverted;
+    });
+  });
+
+  describe("Unfair exchange when amount out less than min target amount", () => {
+    it("should revert", async () => {
+      const { tradingPlatform, swapHelperContract, deployer, baseToken, poolContract, targetToken } =
+        await loadFixture(preparePairAndContracts);
+      const aimTargetTokenAmountOne = ethers.utils.parseUnits("2");
+      const minTargetTokenAmountOne = ethers.utils.parseUnits("2");
+      await tradingPlatform.setProtocolFee(PRECISION - 1);
+
+      await createOrder(
+        deployer,
+        tradingPlatform,
+        baseToken,
+        targetToken,
+        baseAmount,
+        aimTargetTokenAmountOne,
+        minTargetTokenAmountOne,
+        Action.PROFIT
+      );
+
+      const amountToken0ToSale = await calculateAmount0ToSale(poolContract.address, 100, 201);
+      await targetToken.approve(swapHelperContract.address, amountToken0ToSale.toString());
+      await swapHelperContract.swapWithCustomSlippage(
+        deployer.address,
+        targetToken.address,
+        baseToken.address,
+        amountToken0ToSale.toString(),
+        PAIR_FEE,
+        PRECISION - 1 // 100% slippage for set new price on pair
+      );
+      await mine(10, { interval: 60 });
+
+      const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
+
+      expect(checkStatusOrderOne).to.be.true;
+      await expect(tradingPlatform.executeOrders([1])).to.be.revertedWith("Unfair exchange");
     });
   });
 

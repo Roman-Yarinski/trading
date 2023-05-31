@@ -3,10 +3,19 @@ import { ethers } from "hardhat";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 import { BigNumber, ContractFactory } from "ethers";
 import { SwapHelperUniswapV3, TradingPlatform } from "@contracts";
-import { FACTORY, SWAP_ROUTER, SLIPPAGE, SECONDS_AGO, ZERO_ADDRESS, getSigner } from "@test-utils";
+import {
+  FACTORY,
+  SWAP_ROUTER,
+  SLIPPAGE,
+  SECONDS_AGO,
+  ZERO_ADDRESS,
+  getSigner,
+  protocolFee,
+  PRECISION,
+} from "@test-utils";
 
 describe("Method: constructor", () => {
-  let deployer: string, admin: string;
+  let deployer: string, admin: string, feeRecipient: string;
   let swapHelperContract: SwapHelperUniswapV3;
   let TradingPlatformInstance: ContractFactory;
   let tradingPlatform: TradingPlatform;
@@ -38,7 +47,7 @@ describe("Method: constructor", () => {
   }
 
   before(async () => {
-    [deployer, admin] = (await ethers.getSigners()).map((account) => account.address);
+    [deployer, admin, feeRecipient] = (await ethers.getSigners()).map((account) => account.address);
 
     swapHelperContract = await deploySwapHelperContract(
       deployer,
@@ -52,15 +61,27 @@ describe("Method: constructor", () => {
 
   describe("When one of parameters is incorrect", () => {
     it("When swapRouter is zero address", async () => {
-      await expect(TradingPlatformInstance.deploy(ZERO_ADDRESS, admin)).to.be.revertedWith(
-        "UniswapHelperV3 zero address"
-      );
+      await expect(
+        TradingPlatformInstance.deploy(ZERO_ADDRESS, admin, protocolFee, feeRecipient)
+      ).to.be.revertedWith("UniswapHelperV3 zero address");
     });
 
     it("When admin is zero address", async () => {
       await expect(
-        TradingPlatformInstance.deploy(swapHelperContract.address, ZERO_ADDRESS)
+        TradingPlatformInstance.deploy(swapHelperContract.address, ZERO_ADDRESS, protocolFee, feeRecipient)
       ).to.be.revertedWith("Admin zero address");
+    });
+
+    it("When feeRecipient is zero address", async () => {
+      await expect(
+        TradingPlatformInstance.deploy(swapHelperContract.address, admin, protocolFee, ZERO_ADDRESS)
+      ).to.be.revertedWith("Fee recipient zero address");
+    });
+
+    it("When protocolFee equal or greater than PRECISION", async () => {
+      await expect(
+        TradingPlatformInstance.deploy(swapHelperContract.address, admin, PRECISION, feeRecipient)
+      ).to.be.revertedWith("Fee is 100% or greater");
     });
   });
 
@@ -68,12 +89,34 @@ describe("Method: constructor", () => {
     before(async () => {
       tradingPlatform = (await TradingPlatformInstance.deploy(
         swapHelperContract.address,
-        admin
+        admin,
+        protocolFee,
+        feeRecipient
       )) as TradingPlatform;
     });
 
-    it("should secondsAgo be equal to expected", async () => {
+    it("should SwapHelper be equal to expected", async () => {
       expect(await tradingPlatform.getSwapHelper()).to.eq(swapHelperContract.address);
+    });
+
+    it("should protocolFee be equal to expected", async () => {
+      expect(await tradingPlatform.getProtocolFee()).to.eq(protocolFee);
+    });
+
+    it("should feeRecipient be equal to expected", async () => {
+      expect(await tradingPlatform.getFeeRecipient()).to.eq(feeRecipient);
+    });
+
+    it("should admin get DEFAULT_ADMIN_ROLE", async () => {
+      const defaultAdminRole = await tradingPlatform.DEFAULT_ADMIN_ROLE();
+      const roleStatus = await tradingPlatform.hasRole(defaultAdminRole, admin);
+      expect(roleStatus).to.true;
+    });
+
+    it("should admin get ADMIN_ROLE", async () => {
+      const adminRole = await tradingPlatform.ADMIN_ROLE();
+      const roleStatus = await tradingPlatform.hasRole(adminRole, admin);
+      expect(roleStatus).to.true;
     });
   });
 });

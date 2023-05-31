@@ -10,11 +10,10 @@ import { standardPrepare, PAIR_FEE, SLIPPAGE, Action, ZERO_ADDRESS } from "@test
 const baseAmount = ethers.utils.parseUnits("100");
 
 describe("Method: createOrder", () => {
-  let deployer: SignerWithAddress;
-  let admin: SignerWithAddress;
+  let deployer: SignerWithAddress, admin: SignerWithAddress, random: SignerWithAddress;
 
   async function deployTradingPlatform() {
-    [deployer, admin] = await ethers.getSigners();
+    [deployer, admin, random] = await ethers.getSigners();
 
     const standardParams = await standardPrepare(deployer, admin);
 
@@ -121,6 +120,105 @@ describe("Method: createOrder", () => {
       const wrongOrder = { ...order };
       wrongOrder.targetToken = randomToken.address;
       await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith("Token not allowed");
+    });
+
+    it("When user address is wrong", async () => {
+      const { tradingPlatform, order, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      const wrongOrder = { ...order };
+      wrongOrder.userAddress = random.address;
+      await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith("Wrong user address");
+    });
+
+    it("When DCA order has amountPerPeriod equal zero", async () => {
+      const { tradingPlatform, order, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      const dcaOrder = { ...order };
+      const data = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [120, 0]);
+      dcaOrder.action = Action.DCA;
+      dcaOrder.data = data;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Zero amount to swap");
+    });
+
+    it("When TRAILING order has fixingPerStep equal zero", async () => {
+      const { tradingPlatform, order, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      const dcaOrder = { ...order };
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmount, 0, 5000]
+      );
+      dcaOrder.action = Action.TRAILING;
+      dcaOrder.data = data;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Zero amount to swap");
+    });
+
+    it("When TRAILING order base amount not equal data.baseAmount", async () => {
+      const { tradingPlatform, order, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      const dcaOrder = { ...order };
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmount.sub(1), 100, 5000]
+      );
+      dcaOrder.action = Action.TRAILING;
+      dcaOrder.data = data;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Wrong base amount");
+    });
+
+    it("When TRAILING order has step equal zero", async () => {
+      const { tradingPlatform, order, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      const dcaOrder = { ...order };
+      const data = ethers.utils.defaultAbiCoder.encode(
+        ["uint128", "uint128", "uint24"],
+        [baseAmount, 100, 0]
+      );
+      dcaOrder.action = Action.TRAILING;
+      dcaOrder.data = data;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Wrong step amount");
+    });
+
+    it("When try to bound DCA order", async () => {
+      const { tradingPlatform, order, orderWithBound, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      await tradingPlatform.createOrder(order);
+      const dcaOrder = { ...orderWithBound };
+      const data = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [120, baseAmount.div(10)]);
+      dcaOrder.action = Action.DCA;
+      dcaOrder.data = data;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Can't bound DCA order");
+    });
+
+    it("When try to bound with not your order", async () => {
+      const { tradingPlatform, order, orderWithBound, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      await tradingPlatform.createOrder(order);
+      const dcaOrder = { ...orderWithBound };
+      dcaOrder.userAddress = random.address;
+      await expect(tradingPlatform.connect(random).createOrder(dcaOrder)).to.be.revertedWith(
+        "Bound order is not yours"
+      );
+    });
+
+    it("When try to bound with not active order", async () => {
+      const { tradingPlatform, order, orderWithBound, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      await tradingPlatform.createOrder(order);
+      await tradingPlatform.cancelOrders([1]);
+      const dcaOrder = { ...orderWithBound };
+      dcaOrder.boundOrder = 1;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Bound order is not active");
+    });
+
+    it("When try to bound with already bounded order", async () => {
+      const { tradingPlatform, order, orderWithBound, baseToken } = await loadFixture(deployTradingPlatform);
+      await baseToken.approve(tradingPlatform.address, baseAmount.mul(2));
+      await tradingPlatform.createOrder(order);
+      await tradingPlatform.createOrder(orderWithBound);
+      const dcaOrder = { ...orderWithBound };
+      dcaOrder.boundOrder = 1;
+      await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Bound order already bounded");
     });
   });
 
@@ -235,6 +333,248 @@ describe("Method: createOrder", () => {
     });
   });
 
+  describe("Order with deposited order balance: When all parameters correct", () => {
+    let result: ContractTransaction;
+    let tradingPlatform: TradingPlatform;
+    let baseToken: MockERC20;
+    let order: TradingPlatform.OrderStruct;
+    let orderIdBefore: BigNumber;
+    let orderId: BigNumber;
+    let activeOrdersLengthBefore: BigNumber;
+    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let userBalanceOnContractBefore: BigNumber;
+    let userBalanceOnContractAfter: BigNumber;
+
+    const depositAmount = baseAmount.div(2);
+    const neededAmount = baseAmount.sub(depositAmount);
+
+    before(async () => {
+      const deploy = await loadFixture(deployTradingPlatform);
+      tradingPlatform = deploy.tradingPlatform;
+      order = deploy.order;
+      baseToken = deploy.baseToken;
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      await tradingPlatform.deposit(baseToken.address, depositAmount);
+      activeOrdersLengthBefore = await tradingPlatform.activeOrdersLength();
+      orderIdBefore = await tradingPlatform.getOrderCounter();
+      userBalanceOnContractBefore = await tradingPlatform.getUserBalance(
+        deploy.deployer.address,
+        baseToken.address
+      );
+      result = await tradingPlatform.createOrder(order);
+      userBalanceOnContractAfter = await tradingPlatform.getUserBalance(
+        deploy.deployer.address,
+        baseToken.address
+      );
+      orderId = await tradingPlatform.getOrderCounter();
+      orderInfo = (await tradingPlatform.getUserOrdersInfo(deploy.deployer.address))[0];
+    });
+
+    it("should not reverted", async () => {
+      await expect(result).to.be.not.reverted;
+    });
+
+    it("should order id be equal to expected", () => {
+      expect(orderInfo.id).to.be.eq(orderId);
+    });
+
+    it("should increment orderWithBound id", () => {
+      expect(orderIdBefore.add(1)).to.be.eq(orderInfo.id);
+    });
+
+    it("should add new order to active list", async () => {
+      const orderStatus = await tradingPlatform.isActiveOrderExist(orderInfo.id);
+      expect(orderStatus).to.be.true;
+    });
+
+    it("should increment active list", async () => {
+      const activeOrdersLength = await tradingPlatform.activeOrdersLength();
+      expect(activeOrdersLength).to.be.eq(activeOrdersLengthBefore.add(1));
+    });
+
+    it("should add expected id to active list", () => {
+      expect(orderInfo.id).to.be.eq(orderId);
+    });
+
+    it("should userAddress be equal to expected", () => {
+      expect(orderInfo.order["userAddress"]).to.be.eq(order.userAddress);
+    });
+
+    it("should baseToken be equal to expected", () => {
+      expect(orderInfo.order["baseToken"]).to.be.eq(order.baseToken);
+    });
+
+    it("should targetToken be equal to expected", () => {
+      expect(orderInfo.order["targetToken"]).to.be.eq(order.targetToken);
+    });
+
+    it("should pairFee be equal to expected", () => {
+      expect(orderInfo.order["pairFee"]).to.be.eq(order.pairFee);
+    });
+
+    it("should slippage be equal to expected", () => {
+      expect(orderInfo.order["slippage"]).to.be.eq(order.slippage);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["baseAmount"]).to.be.eq(order.baseAmount);
+    });
+
+    it("should orderInfo.order be equal to expected", () => {
+      expect(orderInfo.order["aimTargetTokenAmount"]).to.be.eq(order.aimTargetTokenAmount);
+    });
+
+    it("should minTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo.order["minTargetTokenAmount"]).to.be.eq(order.minTargetTokenAmount);
+    });
+
+    it("should expiration be equal to expected", () => {
+      expect(orderInfo.order["expiration"]).to.be.eq(order.expiration);
+    });
+
+    it("should boundOrders be equal to expected", () => {
+      expect(orderInfo.order["boundOrder"]).to.be.eq(order.boundOrder);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["action"]).to.be.eq(Action.LOSS);
+    });
+
+    it("should send needed amounts of tokens from user to trading contract", async () => {
+      await expect(result).to.changeTokenBalances(
+        baseToken,
+        [deployer, tradingPlatform.address],
+        [`-${neededAmount}`, neededAmount]
+      );
+    });
+
+    it("should spend user tokens on contract", () => {
+      expect(userBalanceOnContractAfter).to.eq(userBalanceOnContractBefore.sub(depositAmount));
+    });
+
+    it("should emit OrderCreated event", async () => {
+      await expect(result).to.emit(tradingPlatform, "OrderCreated").withArgs(orderId, deployer.address);
+    });
+  });
+
+  describe("Order with deposited order balance: When all parameters correct", () => {
+    let result: ContractTransaction;
+    let tradingPlatform: TradingPlatform;
+    let baseToken: MockERC20;
+    let order: TradingPlatform.OrderStruct;
+    let orderIdBefore: BigNumber;
+    let orderId: BigNumber;
+    let activeOrdersLengthBefore: BigNumber;
+    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let userBalanceOnContractBefore: BigNumber;
+    let userBalanceOnContractAfter: BigNumber;
+
+    before(async () => {
+      const deploy = await loadFixture(deployTradingPlatform);
+      tradingPlatform = deploy.tradingPlatform;
+      order = deploy.order;
+      baseToken = deploy.baseToken;
+      await baseToken.approve(tradingPlatform.address, baseAmount);
+      await tradingPlatform.deposit(baseToken.address, baseAmount);
+      activeOrdersLengthBefore = await tradingPlatform.activeOrdersLength();
+      orderIdBefore = await tradingPlatform.getOrderCounter();
+      userBalanceOnContractBefore = await tradingPlatform.getUserBalance(
+        deploy.deployer.address,
+        baseToken.address
+      );
+      result = await tradingPlatform.createOrder(order);
+      userBalanceOnContractAfter = await tradingPlatform.getUserBalance(
+        deploy.deployer.address,
+        baseToken.address
+      );
+      orderId = await tradingPlatform.getOrderCounter();
+      // orderInfo = (await tradingPlatform.getOrdersInfo([orderId]))[0].order;
+      orderInfo = (await tradingPlatform.getUserOrdersInfo(deploy.deployer.address))[0];
+    });
+
+    it("should not reverted", async () => {
+      await expect(result).to.be.not.reverted;
+    });
+
+    it("should order id be equal to expected", () => {
+      expect(orderInfo.id).to.be.eq(orderId);
+    });
+
+    it("should increment orderWithBound id", () => {
+      expect(orderIdBefore.add(1)).to.be.eq(orderInfo.id);
+    });
+
+    it("should add new order to active list", async () => {
+      const orderStatus = await tradingPlatform.isActiveOrderExist(orderInfo.id);
+      expect(orderStatus).to.be.true;
+    });
+
+    it("should increment active list", async () => {
+      const activeOrdersLength = await tradingPlatform.activeOrdersLength();
+      expect(activeOrdersLength).to.be.eq(activeOrdersLengthBefore.add(1));
+    });
+
+    it("should add expected id to active list", () => {
+      expect(orderInfo.id).to.be.eq(orderId);
+    });
+
+    it("should userAddress be equal to expected", () => {
+      expect(orderInfo.order["userAddress"]).to.be.eq(order.userAddress);
+    });
+
+    it("should baseToken be equal to expected", () => {
+      expect(orderInfo.order["baseToken"]).to.be.eq(order.baseToken);
+    });
+
+    it("should targetToken be equal to expected", () => {
+      expect(orderInfo.order["targetToken"]).to.be.eq(order.targetToken);
+    });
+
+    it("should pairFee be equal to expected", () => {
+      expect(orderInfo.order["pairFee"]).to.be.eq(order.pairFee);
+    });
+
+    it("should slippage be equal to expected", () => {
+      expect(orderInfo.order["slippage"]).to.be.eq(order.slippage);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["baseAmount"]).to.be.eq(order.baseAmount);
+    });
+
+    it("should orderInfo.order be equal to expected", () => {
+      expect(orderInfo.order["aimTargetTokenAmount"]).to.be.eq(order.aimTargetTokenAmount);
+    });
+
+    it("should minTargetTokenAmount be equal to expected", () => {
+      expect(orderInfo.order["minTargetTokenAmount"]).to.be.eq(order.minTargetTokenAmount);
+    });
+
+    it("should expiration be equal to expected", () => {
+      expect(orderInfo.order["expiration"]).to.be.eq(order.expiration);
+    });
+
+    it("should boundOrders be equal to expected", () => {
+      expect(orderInfo.order["boundOrder"]).to.be.eq(order.boundOrder);
+    });
+
+    it("should baseAmount be equal to expected", () => {
+      expect(orderInfo.order["action"]).to.be.eq(Action.LOSS);
+    });
+
+    it("should not send tokens from user to trading contract", async () => {
+      await expect(result).to.changeTokenBalances(baseToken, [deployer, tradingPlatform.address], [0, 0]);
+    });
+
+    it("should spend user tokens on contract", () => {
+      expect(userBalanceOnContractAfter).to.eq(userBalanceOnContractBefore.sub(baseAmount));
+    });
+
+    it("should emit OrderCreated event", async () => {
+      await expect(result).to.emit(tradingPlatform, "OrderCreated").withArgs(orderId, deployer.address);
+    });
+  });
+
   describe("DCA: When all parameters correct", () => {
     let result: ContractTransaction;
     let tradingPlatform: TradingPlatform;
@@ -254,7 +594,7 @@ describe("Method: createOrder", () => {
       targetToken = deploy.targetToken;
       const data = ethers.utils.defaultAbiCoder.encode(
         ["uint128", "uint128"],
-        [ethers.utils.parseUnits("1"), 120]
+        [120, ethers.utils.parseUnits("1")]
       );
 
       orderDCA = {
