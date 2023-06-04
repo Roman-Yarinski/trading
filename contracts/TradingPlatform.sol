@@ -9,7 +9,7 @@ import {Counters} from "@openzeppelin/contractsV4/utils/Counters.sol";
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contractsV4/token/ERC20/utils/SafeERC20.sol";
 import {AccessControlEnumerable, EnumerableSet} from "@openzeppelin/contractsV4/access/AccessControlEnumerable.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuard} from "@openzeppelin/contractsV4/security/ReentrancyGuard.sol";
 
 /**
  * @title The contract implements the token trading platform with different trading tools
@@ -395,7 +395,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
     /**
      * @dev See {ITradingPlatform}
      */
-    function performUpkeep(bytes calldata performData) external nonReentrant {
+    function performUpkeep(bytes calldata performData) external {
         uint256[] memory ordersIds = abi.decode(performData, (uint256[]));
         require(ordersIds.length > 0, "Nothing for execution");
         executeOrders(ordersIds);
@@ -483,7 +483,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
                     Order memory boundOrder = orderInfo[order.boundOrder];
                     activeOrders.remove(order.boundOrder);
                     balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
-                    emit OrderCanceled(order.boundOrder); // TODO: add test for that
+                    emit OrderCanceled(order.boundOrder);
                 } // remove all bound orders and refund tokens to user balance
             }
         }
