@@ -170,9 +170,14 @@ interface ITradingPlatform is AutomationCompatibleInterface {
 
     /**
      * @notice Checks the upkeep status and provides the necessary data for performing upkeep.
-     * @param checkData Unused parameter.
+     * @param checkData Additional data for the upkeep check.
      * @return upkeepNeeded A boolean indicating whether upkeep is needed or not.
      * @return performData Encoded data containing the order IDs that require rebalance.
+     * @dev This function is external and view-only.
+     * @dev It calls the shouldRebalance function to retrieve the list of order IDs that need to be rebalanced.
+     * @dev It sets upkeepNeeded to true if there are any orders that need to be rebalanced, and false otherwise.
+     * @dev It encodes the list of order IDs into performData using the abi.encode function.
+     * @dev Finally, it returns upkeepNeeded and performData.
      */
     function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData);
 
@@ -271,6 +276,12 @@ interface ITradingPlatform is AutomationCompatibleInterface {
     /**
      * @notice Retrieves the list of order IDs that need to be rebalanced.
      * @return An array of order IDs that require rebalance.
+     * @dev Initializes an array of order IDs with the size of the active orders count.
+     * @dev Iterates over the active orders and checks each order using the checkOrder function.
+     * @dev If an order needs to be rebalanced, it adds the order ID to the ordersIds array.
+     * @dev If an order does not need to be rebalanced, it increments the skipped counter.
+     * @dev If any orders were skipped, it adjusts the length of the ordersIds array accordingly.
+     * @dev Finally, it returns the array of order IDs that need to be rebalanced.
      */
     function shouldRebalance() external view returns (uint256[] memory);
 
@@ -337,7 +348,10 @@ interface ITradingPlatform is AutomationCompatibleInterface {
     /**
      * @notice Performs the upkeep based on the provided performData.
      * @param performData Encoded data containing the order IDs to be executed.
-     * @dev Requires the performData does contain any order IDs.
+     * @dev This function is external and non-reentrant.
+     * @dev Requires at least one order ID to be provided for execution.
+     * @dev It decodes the performData to retrieve the order IDs.
+     * @dev Calls the executeOrders function to execute the specified orders.
      * @dev Emits a {OrderExecuted} event for each executed order.
      */
     function performUpkeep(bytes calldata performData) external;

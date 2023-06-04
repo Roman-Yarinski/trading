@@ -9,11 +9,12 @@ import {Counters} from "@openzeppelin/contractsV4/utils/Counters.sol";
 import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import {SafeERC20, IERC20} from "@openzeppelin/contractsV4/token/ERC20/utils/SafeERC20.sol";
 import {AccessControlEnumerable, EnumerableSet} from "@openzeppelin/contractsV4/access/AccessControlEnumerable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title The contract implements the token trading platform with different trading tools
  */
-contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
+contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Counters for Counters.Counter;
     using EnumerableSet for EnumerableSet.UintSet;
@@ -274,7 +275,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function boundOrders(uint256 leftOrderId, uint256 rightOrderId) external {
+    function boundOrders(uint256 leftOrderId, uint256 rightOrderId) external nonReentrant {
         require(leftOrderId != 0 && rightOrderId != 0 && leftOrderId != rightOrderId, "Non-compatible orders");
         require(
             orderInfo[leftOrderId].userAddress == msg.sender && orderInfo[rightOrderId].userAddress == msg.sender,
@@ -296,7 +297,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function cancelOrders(uint256[] memory ordersIds) external {
+    function cancelOrders(uint256[] memory ordersIds) external nonReentrant {
         for (uint256 i = 0; i < ordersIds.length; i++) {
             if (!activeOrders.contains(ordersIds[i])) continue;
             Order memory order = orderInfo[ordersIds[i]];
@@ -310,7 +311,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function createOrder(Order memory order) external returns (uint256) {
+    function createOrder(Order memory order) external nonReentrant returns (uint256) {
         // TODO: add checks
         require(order.userAddress == msg.sender, "Wrong user address");
         require(order.baseToken != address(0), "Zero address check");
@@ -370,7 +371,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function deposit(address token, uint256 amount) external returns (bool) {
+    function deposit(address token, uint256 amount) external nonReentrant returns (bool) {
         require(tokensWhiteList.contains(token), "Token not allowed");
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         balances[msg.sender][token] += amount;
@@ -381,7 +382,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function executeOrders(uint256[] memory ordersIds) public returns (bool) {
+    function executeOrders(uint256[] memory ordersIds) public nonReentrant returns (bool) {
         for (uint256 i = 0; i < ordersIds.length; i++) {
             if (!checkOrder(ordersIds[i])) {
                 continue;
@@ -394,7 +395,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function performUpkeep(bytes calldata performData) external {
+    function performUpkeep(bytes calldata performData) external nonReentrant {
         uint256[] memory ordersIds = abi.decode(performData, (uint256[]));
         require(ordersIds.length > 0, "Nothing for execution");
         executeOrders(ordersIds);
@@ -422,7 +423,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function withdraw(address token, uint256 amount) external returns (bool) {
+    function withdraw(address token, uint256 amount) external nonReentrant returns (bool) {
         require(balances[msg.sender][token] >= amount, "Amount exceed balance");
         balances[msg.sender][token] -= amount;
         IERC20(token).safeTransfer(msg.sender, amount);
