@@ -150,7 +150,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     function checkOrder(uint256 orderId) public view returns (bool) {
         if (!activeOrders.contains(orderId)) return false; // Not active
         Order memory order = orderInfo[orderId];
-        if ((order.action != Action.DCA || order.action != Action.TRAILING) && order.expiration < block.timestamp) {
+        if ((order.action == Action.PROFIT || order.action == Action.LOSS) && order.expiration < block.timestamp) {
             return false;
         }
         if (order.action == Action.DCA) {
@@ -318,8 +318,8 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
         require(order.baseToken != order.targetToken, "Tokens must be different");
         require(order.baseAmount > 0, "Amount in must be greater than 0");
         require(order.slippage > 0 && order.slippage < 50000, "Unsafe slippage");
-        if (order.action != Action.DCA) {
-            require(order.aimTargetTokenAmount > 0, "Aim amount must be greater than 0");
+        if (order.action != Action.DCA) require(order.aimTargetTokenAmount > 0, "Aim amount must be greater than 0");
+        if (order.action == Action.PROFIT || order.action == Action.LOSS) {
             require(order.expiration > block.timestamp, "Wrong expiration date");
         }
         require(
@@ -414,8 +414,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
     /**
      * @dev See {ITradingPlatform}
      */
-    function setProtocolFee(uint32 newProtocolFee) external {
-        // TODO: add role
+    function setProtocolFee(uint32 newProtocolFee) external onlyRole(ADMIN_ROLE) {
         require(newProtocolFee < PRECISION);
         protocolFee = newProtocolFee;
     }
@@ -459,24 +458,23 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
                 } else {
                     // update storage only if this info will be needed in future
                     amountToSwap = decodedData.fixingPerStep;
-                    additionalInformation[orderId] = expectedAmountOut;
-                    orderInfo[orderId].baseAmount -= amountToSwap;
                 }
             } else if (expectedAmountOut < lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)) {
                 amountToSwap = order.baseAmount;
                 activeOrders.remove(orderId); //update active orders set
             }
+            additionalInformation[orderId] = expectedAmountOut;
+            orderInfo[orderId].baseAmount -= amountToSwap;
         } else if (order.action == Action.DCA) {
             DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
             amountToSwap = decodedData.amountPerPeriod;
             if (decodedData.amountPerPeriod > order.baseAmount) {
                 amountToSwap = order.baseAmount;
                 activeOrders.remove(orderId); //update active orders set
-            } else {
-                // update storage only if this info will be needed in future
-                additionalInformation[orderId] = block.timestamp;
-                orderInfo[orderId].baseAmount -= amountToSwap;
             }
+            // update storage
+            additionalInformation[orderId] = block.timestamp;
+            orderInfo[orderId].baseAmount -= amountToSwap;
         } else if (order.action == Action.LOSS || order.action == Action.PROFIT) {
             activeOrders.remove(orderId); //update active orders set
             if (order.boundOrder != 0) {
@@ -484,6 +482,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable {
                     Order memory boundOrder = orderInfo[order.boundOrder];
                     activeOrders.remove(order.boundOrder);
                     balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
+                    emit OrderCanceled(order.boundOrder); // TODO: add test for that
                 } // remove all bound orders and refund tokens to user balance
             }
         }
