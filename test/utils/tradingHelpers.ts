@@ -1,11 +1,11 @@
-import { ERC20, TradingPlatform } from "@contracts";
 import { mine } from "@nomicfoundation/hardhat-network-helpers";
-import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { FeeAmount } from "@uniswap/v3-sdk";
-import { BigNumber, BigNumberish, BytesLike } from "ethers";
 import { ethers } from "hardhat";
-import { createPoolAndSetPrice } from "./uniHelpers";
+import { FeeAmount } from "@uniswap/v3-sdk";
 import { ZERO_BYTES } from "./constants";
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
+import { createPoolAndSetPrice } from "./uniHelpers";
+import { BigNumber, BigNumberish, BytesLike } from "ethers";
+import { ERC20, TradingPlatform, ITradingPlatform } from "@contracts";
 
 export const FACTORY = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 export const SWAP_ROUTER = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
@@ -38,7 +38,7 @@ export async function createOrder(
   data: BytesLike = ZERO_BYTES,
   expiration: BigNumberish = Math.floor(Date.now() / 1000) + 60 * 60
 ) {
-  const order: TradingPlatform.OrderStruct = {
+  const order: ITradingPlatform.OrderStruct = {
     userAddress: operator.address,
     baseToken: baseToken.address,
     targetToken: targetToken.address,

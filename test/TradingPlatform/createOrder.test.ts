@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { time, loadFixture } from "@nomicfoundation/hardhat-network-helpers";
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { MockERC20, TradingPlatform } from "@contracts";
+import { MockERC20, TradingPlatform, ITradingPlatform } from "@contracts";
 import { BigNumber, BigNumberish, ContractTransaction } from "ethers";
 import { standardPrepare, PAIR_FEE, SLIPPAGE, Action, ZERO_ADDRESS } from "@test-utils";
 
@@ -17,7 +17,7 @@ describe("Method: createOrder", () => {
 
     const standardParams = await standardPrepare(deployer, admin);
 
-    const order: TradingPlatform.OrderStruct = {
+    const order: ITradingPlatform.OrderStruct = {
       userAddress: deployer.address,
       baseToken: standardParams.baseToken.address,
       targetToken: standardParams.targetToken.address,
@@ -32,7 +32,7 @@ describe("Method: createOrder", () => {
       data: ZERO_BYTES,
     };
 
-    const orderWithBound: TradingPlatform.OrderStruct = {
+    const orderWithBound: ITradingPlatform.OrderStruct = {
       userAddress: deployer.address,
       baseToken: standardParams.baseToken.address,
       targetToken: standardParams.targetToken.address,
@@ -227,12 +227,12 @@ describe("Method: createOrder", () => {
     let result: ContractTransaction;
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
-    let order: TradingPlatform.OrderStruct;
-    let orderWithBound: TradingPlatform.OrderStruct;
+    let order: ITradingPlatform.OrderStruct;
+    let orderWithBound: ITradingPlatform.OrderStruct;
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
-    let orderInfo: TradingPlatform.OrderStruct;
+    let orderInfo: ITradingPlatform.OrderStruct;
 
     before(async () => {
       const deploy = await loadFixture(deployTradingPlatform);
@@ -338,11 +338,11 @@ describe("Method: createOrder", () => {
     let result: ContractTransaction;
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
-    let order: TradingPlatform.OrderStruct;
+    let order: ITradingPlatform.OrderStruct;
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
-    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let orderInfo: ITradingPlatform.OrderInfoStruct;
     let userBalanceOnContractBefore: BigNumber;
     let userBalanceOnContractAfter: BigNumber;
 
@@ -462,11 +462,11 @@ describe("Method: createOrder", () => {
     let result: ContractTransaction;
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
-    let order: TradingPlatform.OrderStruct;
+    let order: ITradingPlatform.OrderStruct;
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
-    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let orderInfo: ITradingPlatform.OrderInfoStruct;
     let userBalanceOnContractBefore: BigNumber;
     let userBalanceOnContractAfter: BigNumber;
 
@@ -581,11 +581,11 @@ describe("Method: createOrder", () => {
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
     let targetToken: MockERC20;
-    let orderDCA: TradingPlatform.OrderStruct;
+    let orderDCA: ITradingPlatform.OrderStruct;
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
-    let orderInfo: TradingPlatform.OrderInfoStruct;
+    let orderInfo: ITradingPlatform.OrderInfoStruct;
     let creationTimeStamp: BigNumberish;
 
     before(async () => {
@@ -719,11 +719,11 @@ describe("Method: createOrder", () => {
     let tradingPlatform: TradingPlatform;
     let baseToken: MockERC20;
     let targetToken: MockERC20;
-    let orderTrailing: TradingPlatform.OrderStruct;
+    let orderTrailing: ITradingPlatform.OrderStruct;
     let orderIdBefore: BigNumber;
     let orderId: BigNumber;
     let activeOrdersLengthBefore: BigNumber;
-    let orderInfo: TradingPlatform.OrderStruct;
+    let orderInfo: ITradingPlatform.OrderStruct;
 
     before(async () => {
       const deploy = await loadFixture(deployTradingPlatform);
