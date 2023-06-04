@@ -8,6 +8,54 @@ import { BigNumber, ContractTransaction } from "ethers";
 
 const baseAmount = ethers.utils.parseUnits("100");
 
+// 0x000000000000000000000000000000000000000000000000000000000000003c0000000000000000000000000000000000000000000000000de0b6b3a7640000
+// 0x0000000000000000000000000000000000000000000000056bc75e2d631000000000000000000000000000000000000000000000000000015af1d78b58c40000000000000000000000000000000000000000000000000000000000000000c350;
+
+// describe.only("Coding", () => {
+//   it("should calculate data for TRAILING", () => {
+//     const baseAmountForTRAILING = "1000000000000000000000";
+//     const amountToSpendForPeriod = ethers.utils.parseUnits("100");
+//     const step = 50000; // 5%
+
+//     const data = ethers.utils.defaultAbiCoder.encode(
+//       ["uint128", "uint128", "uint24"],
+//       [baseAmountForTRAILING, amountToSpendForPeriod, step]
+//     );
+
+//     console.log(data);
+//   });
+
+//   it("should calculate data for DCA", () => {
+//     const amountToSpendForPeriod = ethers.utils.parseUnits("1000");
+//     const period = 604800;
+
+//     const data = ethers.utils.defaultAbiCoder.encode(
+//       ["uint128", "uint128"],
+//       [period, amountToSpendForPeriod]
+//     );
+
+//     console.log(data);
+//   });
+
+//   it("should decode data for DCA", () => {
+//     const encodedData =
+//       "0x000000000000000000000000000000000000000000000000000000000000003c0000000000000000000000000000000000000000000000000de0b6b3a7640000";
+
+//     const data = ethers.utils.defaultAbiCoder.decode(["uint128", "uint128"], encodedData);
+
+//     console.log(data);
+//   });
+
+//   it("should decode data for TRAILING", () => {
+//     const encodedData =
+//       "0x0000000000000000000000000000000000000000000000056bc75e2d631000000000000000000000000000000000000000000000000000015af1d78b58c40000000000000000000000000000000000000000000000000000000000000000c350";
+
+//     const data = ethers.utils.defaultAbiCoder.decode(["uint128", "uint128", "uint24"], encodedData);
+
+//     console.log(data);
+//   });
+// });
+
 describe("Method: withdraw", () => {
   async function deployTradingPlatform() {
     const [deployer, admin] = await ethers.getSigners();

@@ -35,7 +35,8 @@ export async function createOrder(
   aimTargetTokenAmount: BigNumberish,
   minTargetTokenAmount: BigNumberish,
   action: Action,
-  data: BytesLike = ZERO_BYTES
+  data: BytesLike = ZERO_BYTES,
+  expiration: BigNumberish = Math.floor(Date.now() / 1000) + 60 * 60
 ) {
   const order: TradingPlatform.OrderStruct = {
     userAddress: operator.address,
@@ -46,7 +47,7 @@ export async function createOrder(
     baseAmount: baseAmountForOrder,
     aimTargetTokenAmount,
     minTargetTokenAmount,
-    expiration: Math.floor(Date.now() / 1000) + 60 * 60,
+    expiration,
     boundOrder: 0,
     action,
     data,

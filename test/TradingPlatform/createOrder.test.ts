@@ -137,6 +137,7 @@ describe("Method: createOrder", () => {
       const data = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [120, 0]);
       dcaOrder.action = Action.DCA;
       dcaOrder.data = data;
+      dcaOrder.expiration = 0;
       await expect(tradingPlatform.createOrder(dcaOrder)).to.be.revertedWith("Zero amount to swap");
     });
 

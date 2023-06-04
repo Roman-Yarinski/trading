@@ -45,14 +45,6 @@ describe("Method: swap", () => {
   }
 
   describe("When one of parameters is incorrect", () => {
-    it.skip("When caller not have swapper role", async () => {
-      const { swapHelperContract, beneficiary } = await loadFixture(initContractsFixture);
-
-      await expect(
-        swapHelperContract.swap(beneficiary.address, WETH9, USDC, amountIn, FEE)
-      ).to.be.revertedWith("SwapHelperV3: caller does not have role");
-    });
-
     it("When beneficiary is zero address", async () => {
       const { swapHelperContract, admin, deployer, swapperRole } = await loadFixture(initContractsFixture);
       await swapHelperContract.connect(admin).grantRole(swapperRole, deployer.address);

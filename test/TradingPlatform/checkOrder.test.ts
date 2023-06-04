@@ -412,7 +412,8 @@ describe("Method: checkOrder", () => {
         0,
         0,
         Action.DCA,
-        data
+        data,
+        0
       );
 
       const checkStatusOrderOne = await tradingPlatform.checkOrder(1);
@@ -424,7 +425,7 @@ describe("Method: checkOrder", () => {
       expect(checkStatusOrderOne).to.be.false;
     });
 
-    it("should return true if required period has not passed", async () => {
+    it("should return true if required period has passed", async () => {
       const { tradingPlatform, deployer, baseToken, targetToken } = await loadFixture(
         preparePairAndContracts
       );
@@ -438,7 +439,8 @@ describe("Method: checkOrder", () => {
         0,
         0,
         Action.DCA,
-        data
+        data,
+        0
       );
 
       await time.increase(period + 1);

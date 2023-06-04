@@ -73,7 +73,8 @@ describe("Method: boundOrders", () => {
       ethers.utils.parseUnits("50"),
       ethers.utils.parseUnits("45"),
       Action.DCA,
-      data
+      data,
+      0
     );
 
     return standardParams;

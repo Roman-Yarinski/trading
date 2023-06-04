@@ -61,11 +61,11 @@ describe("Method: executeOrders", () => {
 
   describe("Unfair exchange when amount out less than min target amount", () => {
     it("should revert", async () => {
-      const { tradingPlatform, swapHelperContract, deployer, baseToken, poolContract, targetToken } =
+      const { tradingPlatform, swapHelperContract, deployer, baseToken, poolContract, targetToken, admin } =
         await loadFixture(preparePairAndContracts);
       const aimTargetTokenAmountOne = ethers.utils.parseUnits("2");
       const minTargetTokenAmountOne = ethers.utils.parseUnits("2");
-      await tradingPlatform.setProtocolFee(PRECISION - 1);
+      await tradingPlatform.connect(admin).setProtocolFee(PRECISION - 1);
 
       await createOrder(
         deployer,
@@ -166,10 +166,10 @@ describe("Method: executeOrders", () => {
     });
 
     it("should execute all ready orders and skip others", async () => {
-      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
+      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken, admin } =
         await loadFixture(preparePairAndContracts);
 
-      await tradingPlatform.setProtocolFee(0); // skip fee influence
+      await tradingPlatform.connect(admin).setProtocolFee(0); // skip fee influence
 
       const aimTargetTokenAmountProfitOne = ethers.utils.parseUnits("2");
       const minTargetTokenAmountProfitOne = ethers.utils.parseUnits("2");
@@ -450,6 +450,10 @@ describe("Method: executeOrders", () => {
       it("should emit OrderExecuted event", async () => {
         await expect(result).to.emit(tradingPlatform, "OrderExecuted").withArgs(1, deployer.address);
       });
+
+      it("should emit OrderCanceled event", async () => {
+        await expect(result).to.emit(tradingPlatform, "OrderCanceled").withArgs(2);
+      });
     });
 
     describe("LOSS action", () => {
@@ -597,7 +601,8 @@ describe("Method: executeOrders", () => {
           aimTargetTokenAmount,
           minTargetTokenAmount,
           Action.DCA,
-          data
+          data,
+          0
         );
 
         checkStatusOrderBefore = await tradingPlatform.isActiveOrderExist(1);

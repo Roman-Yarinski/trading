@@ -41,10 +41,10 @@ describe("Method: performUpkeep", () => {
 
   describe("Orders to execute", () => {
     it("should execute ready orders", async () => {
-      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
+      const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken, admin } =
         await loadFixture(preparePairAndContracts);
 
-      await tradingPlatform.setProtocolFee(0); // skip fee influence
+      await tradingPlatform.connect(admin).setProtocolFee(0); // skip fee influence
 
       const aimTargetTokenAmountProfitOne = ethers.utils.parseUnits("2");
       const minTargetTokenAmountProfitOne = ethers.utils.parseUnits("2");
