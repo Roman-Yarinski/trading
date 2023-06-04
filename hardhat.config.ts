@@ -7,7 +7,7 @@ import "solidity-coverage";
 import "hardhat-watcher";
 import "hardhat-deploy";
 import "solidity-docgen";
-import "hardhat-docgen";
+// import "hardhat-docgen";
 
 import "./tasks/index";
 
@@ -143,7 +143,8 @@ const config: HardhatUserConfig = {
     path: "./docs/hardhat",
     exclude: ["./mocks"],
     clear: true,
-    runOnCompile: true,
+    runOnCompile: false,
+    pages: "single",
   },
 };
 
