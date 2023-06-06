@@ -72,4 +72,26 @@ interface ISwapHelperUniswapV3 {
         uint128 amountIn,
         uint24 fee
     ) external returns (uint256 amountOut);
+
+    /**
+     * @notice Swaps `amountIn` of one token for as much as possible of another along the specified path
+     * @param beneficiary Beneficiary `amountOut` after swap
+     * @param tokenIn Exchangeable token
+     * @param tokenOut Output token during the exchange
+     * @param amountIn The desired number of tokens for the exchange
+     * @param fee The desired fee for the pool
+     * @param slippageForSwap slippage for swap
+     * @dev tokenIn and tokenOut may be passed in either order: token0/token1 or token1/token0.
+     * The call will revert if the pool not already exists, the fee is invalid, or the token arguments
+     * are invalid. The minimum price is determined by a globally set parameter `_slippage`
+     * @return amountOut The number of tokens at the exit after the swap
+     */
+    function swapWithCustomSlippage(
+        address beneficiary,
+        address tokenIn,
+        address tokenOut,
+        uint128 amountIn,
+        uint24 fee,
+        uint256 slippageForSwap
+    ) external returns (uint256 amountOut);
 }

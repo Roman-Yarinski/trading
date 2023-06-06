@@ -139,7 +139,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         uint128 amountIn,
         uint24 fee,
         uint256 slippageForSwap
-    ) external returns (uint256 amountOut) {
+    ) external override returns (uint256 amountOut) {
         require(beneficiary != address(0), "SwapHelperV3: beneficiary is zero address");
         require(tokenIn != address(0), "SwapHelperV3: tokenIn is zero address");
         require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");

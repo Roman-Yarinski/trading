@@ -23,7 +23,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE"); // Representing the admin role.
     uint32 public constant PRECISION = 1000000; // Precision constant used for percentage calculations. Represents the decimal precision up to six decimal places.
 
-    uint32 private secondsAgoDefault = 120; // Default value for the number of seconds ago used in average price calculations.
+    uint32 private secondsAgoDefault = 30; // Default value for the number of seconds ago used in average price calculations.
     uint32 private protocolFee; //  Protocol fee applied to certain operations in the contract. Represents the fee percentage applied to specific operations within the contract.
     address private uniswapHelperV3; // Address of the Uniswap helper contract (version 3) used for swaps.
     address private feeRecipient; // Address of the recipient of protocol fees.  Represents the address where the protocol fees are sent to.
@@ -69,9 +69,19 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
      * @dev See {ITradingPlatform}
      */
     function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData) {
+        (uint128 performOffset, uint128 performLimit) = abi.decode(checkData, (uint128, uint128));
         uint256[] memory ordersIds = shouldRebalance();
+        // control perform part hire for gas saving
+        if (performOffset >= ordersIds.length) return (upkeepNeeded, abi.encode(new uint256[](0)));
+        uint256 performTo = (performOffset + performLimit) > ordersIds.length
+            ? ordersIds.length
+            : performOffset + performLimit;
+        uint256[] memory checkArray = new uint256[](performTo - performOffset);
+        for (uint256 i = 0; i < checkArray.length; i++) {
+            checkArray[i] = ordersIds[performOffset + i];
+        }
         upkeepNeeded = ordersIds.length > 0;
-        performData = abi.encode(ordersIds);
+        performData = abi.encode(checkArray);
     }
 
     /**
@@ -454,7 +464,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
                 lastBuyingAmountOut == 0 ||
                 expectedAmountOut >= lastBuyingAmountOut + getPercent(lastBuyingAmountOut, decodedData.step)
             ) {
-                if (decodedData.fixingPerStep > order.baseAmount) {
+                if (decodedData.fixingPerStep >= order.baseAmount) {
                     activeOrders.remove(orderId); //update active orders set
                 } else {
                     // update storage only if this info will be needed in future
@@ -469,7 +479,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
         } else if (order.action == Action.DCA) {
             DCAOrderData memory decodedData = abi.decode(order.data, (DCAOrderData));
             amountToSwap = decodedData.amountPerPeriod;
-            if (decodedData.amountPerPeriod > order.baseAmount) {
+            if (decodedData.amountPerPeriod >= order.baseAmount) {
                 amountToSwap = order.baseAmount;
                 activeOrders.remove(orderId); //update active orders set
             }
@@ -488,12 +498,13 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
             }
         }
         IERC20(order.baseToken).approve(uniswapHelperV3, amountToSwap);
-        uint256 amountOut = ISwapHelperUniswapV3(uniswapHelperV3).swap( // TODO: add user slippage ?
-            order.userAddress,
+        uint256 amountOut = ISwapHelperUniswapV3(uniswapHelperV3).swapWithCustomSlippage( // TODO: add user slippage ?
+            address(this),
             order.baseToken,
             order.targetToken,
             amountToSwap,
-            order.pairFee
+            order.pairFee,
+            order.slippage
         );
         uint256 feeAmount = calculateFee(amountOut, protocolFee);
         if (order.action == Action.LOSS || order.action == Action.PROFIT)
