@@ -12,7 +12,7 @@ import {
   calculateAmount0ToSale,
 } from "@test-utils";
 
-const CHECK_DATA = ZERO_BYTES;
+const CHECK_DATA = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [0, 100]);
 
 async function preparePairAndContracts() {
   const [deployer, admin] = await ethers.getSigners();
@@ -24,7 +24,6 @@ describe("Method: performUpkeep", () => {
   describe("Orders not exists", () => {
     it("should revert if no orders for execution", async () => {
       const { tradingPlatform } = await loadFixture(preparePairAndContracts);
-
       const checkResult = await tradingPlatform.checkUpkeep(CHECK_DATA);
       const decodedPerformData = ethers.utils.defaultAbiCoder.decode(
         ["uint256[]"],

@@ -436,6 +436,17 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gte(minTargetTokenAmountProfit);
       });
 
+      it("should don't send tokens from contract to user", async () => {
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        const feeBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        await expect(result).to.changeTokenBalances(
+          targetToken,
+          [deployer, tradingPlatform.address],
+          [0, userBalance.add(feeBalance)]
+        );
+      });
+
       it("should increment resultTokenOut for order", async () => {
         const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
         const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
@@ -549,6 +560,17 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gte(minTargetTokenAmount);
       });
 
+      it("should don't send tokens from contract to user", async () => {
+        const feeRecipient = await tradingPlatform.getFeeRecipient();
+        const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+        const feeBalance = await tradingPlatform.getUserBalance(feeRecipient, targetToken.address);
+        await expect(result).to.changeTokenBalances(
+          targetToken,
+          [deployer, tradingPlatform.address],
+          [0, userBalance.add(feeBalance)]
+        );
+      });
+
       it("should increment resultTokenOut for order", async () => {
         const userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
         const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
@@ -633,6 +655,14 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gt(0);
       });
 
+      it("should don't send tokens from contract to user", async () => {
+        await expect(result).to.changeTokenBalances(
+          targetToken,
+          [deployer, tradingPlatform.address],
+          [0, userBalance.add(feeRecipientBalance)]
+        );
+      });
+
       it("should increment resultTokenOut for order", async () => {
         const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
         expect(resultTokenOut).to.be.eq(userBalance);
@@ -689,6 +719,22 @@ describe("Method: executeOrders", () => {
         it("should increment user balance", async () => {
           const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
           expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should don't send tokens from contract to user", async () => {
+          const feeRecipient = await tradingPlatform.getFeeRecipient();
+          const newFeeRecipientBalance = await tradingPlatform.getUserBalance(
+            feeRecipient,
+            targetToken.address
+          );
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          const txAmountOutForUser = newUserBalance.sub(userBalance);
+          const txAmountOutFee = newFeeRecipientBalance.sub(feeRecipientBalance);
+          await expect(result).to.changeTokenBalances(
+            targetToken,
+            [deployer, tradingPlatform.address],
+            [0, txAmountOutForUser.add(txAmountOutFee)]
+          );
         });
 
         it("should increment resultTokenOut for order", async () => {
@@ -798,6 +844,14 @@ describe("Method: executeOrders", () => {
         expect(userBalance).to.be.gt(0);
       });
 
+      it("should don't send tokens from contract to user", async () => {
+        await expect(result).to.changeTokenBalances(
+          targetToken,
+          [deployer, tradingPlatform.address],
+          [0, userBalance.add(feeRecipientBalance)]
+        );
+      });
+
       it("should increment resultTokenOut for order", async () => {
         const resultTokenOut = await tradingPlatform.getResultTokenOut(1);
         expect(resultTokenOut).to.be.eq(userBalance);
@@ -878,6 +932,22 @@ describe("Method: executeOrders", () => {
         it("should increment user balance", async () => {
           const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
           expect(newUserBalance).to.be.gt(userBalance);
+        });
+
+        it("should don't send tokens from contract to user", async () => {
+          const feeRecipient = await tradingPlatform.getFeeRecipient();
+          const newFeeRecipientBalance = await tradingPlatform.getUserBalance(
+            feeRecipient,
+            targetToken.address
+          );
+          const newUserBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
+          const txAmountOutForUser = newUserBalance.sub(userBalance);
+          const txAmountOutFee = newFeeRecipientBalance.sub(feeRecipientBalance);
+          await expect(result).to.changeTokenBalances(
+            targetToken,
+            [deployer, tradingPlatform.address],
+            [0, txAmountOutForUser.add(txAmountOutFee)]
+          );
         });
 
         it("should increment resultTokenOut for order", async () => {
@@ -1002,6 +1072,10 @@ describe("Method: executeOrders", () => {
         // TODO: fix fee check
         userBalance = await tradingPlatform.getUserBalance(deployer.address, targetToken.address);
         expect(userBalance).to.be.gt(0);
+      });
+
+      it("should don't send tokens from contract to user", async () => {
+        await expect(result).to.changeTokenBalance(targetToken, deployer, 0);
       });
 
       it("should not change user orders list", async () => {

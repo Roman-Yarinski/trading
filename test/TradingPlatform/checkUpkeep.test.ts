@@ -1,6 +1,5 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ZERO_BYTES } from "./../utils/constants";
 import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
 import {
   Action,
@@ -12,7 +11,7 @@ import {
   calculateAmount0ToSale,
 } from "@test-utils";
 
-const CHECK_DATA = ZERO_BYTES;
+const CHECK_DATA = ethers.utils.defaultAbiCoder.encode(["uint128", "uint128"], [0, 100]);
 
 async function preparePairAndContracts() {
   const [deployer, admin] = await ethers.getSigners();
@@ -24,7 +23,6 @@ describe("Method: checkUpkeep", () => {
   describe("Orders not exists", () => {
     it("should return empty array and false status", async () => {
       const { tradingPlatform } = await loadFixture(preparePairAndContracts);
-
       const checkResult = await tradingPlatform.checkUpkeep(CHECK_DATA);
       const decodedPerformData = ethers.utils.defaultAbiCoder.decode(
         ["uint256[]"],
@@ -107,7 +105,7 @@ describe("Method: checkUpkeep", () => {
       expect(decodedPerformData[0]).to.be.deep.eq([]);
     });
 
-    it("should return array with orders to execute  and true status", async () => {
+    it("should return array with orders to execute and true status", async () => {
       const { tradingPlatform, swapHelperContract, poolContract, deployer, baseToken, targetToken } =
         await loadFixture(preparePairAndContracts);
 
