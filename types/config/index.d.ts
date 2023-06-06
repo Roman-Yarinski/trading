@@ -47,6 +47,11 @@ declare module "config" {
       SLIPPAGE: number;
       SECONDS_AGO_DEFAULT: number;
     };
+    UPKEEP_CONTROLLER: {
+      LINK_TOKEN: string;
+      AUTOMATION_REGISTRAR: string;
+      AUTOMATION_REGISTRY: string;
+    };
   }
 
   export interface Scripts {
