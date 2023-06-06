@@ -104,3 +104,32 @@ are invalid. The minimum price is determined by a globally set parameter `_slipp
 | ---- | ---- | ----------- |
 | amountOut | uint256 | The number of tokens at the exit after the swap |
 
+### swapWithCustomSlippage
+
+```solidity
+function swapWithCustomSlippage(address beneficiary, address tokenIn, address tokenOut, uint128 amountIn, uint24 fee, uint256 slippageForSwap) external returns (uint256 amountOut)
+```
+
+Swaps `amountIn` of one token for as much as possible of another along the specified path
+
+_tokenIn and tokenOut may be passed in either order: token0/token1 or token1/token0.
+The call will revert if the pool not already exists, the fee is invalid, or the token arguments
+are invalid. The minimum price is determined by a globally set parameter `_slippage`_
+
+#### Parameters
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| beneficiary | address | Beneficiary `amountOut` after swap |
+| tokenIn | address | Exchangeable token |
+| tokenOut | address | Output token during the exchange |
+| amountIn | uint128 | The desired number of tokens for the exchange |
+| fee | uint24 | The desired fee for the pool |
+| slippageForSwap | uint256 | slippage for swap |
+
+#### Return Values
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| amountOut | uint256 | The number of tokens at the exit after the swap |
+

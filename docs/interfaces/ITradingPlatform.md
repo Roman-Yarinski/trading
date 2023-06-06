@@ -252,11 +252,17 @@ function checkUpkeep(bytes checkData) external view returns (bool upkeepNeeded, 
 
 Checks the upkeep status and provides the necessary data for performing upkeep.
 
+_This function is external and view-only.
+It calls the shouldRebalance function to retrieve the list of order IDs that need to be rebalanced.
+It sets upkeepNeeded to true if there are any orders that need to be rebalanced, and false otherwise.
+It encodes the list of order IDs into performData using the abi.encode function.
+Finally, it returns upkeepNeeded and performData._
+
 #### Parameters
 
 | Name | Type | Description |
 | ---- | ---- | ----------- |
-| checkData | bytes | Unused parameter. |
+| checkData | bytes | Additional data for the upkeep check. |
 
 #### Return Values
 
@@ -512,6 +518,13 @@ function shouldRebalance() external view returns (uint256[])
 
 Retrieves the list of order IDs that need to be rebalanced.
 
+_Initializes an array of order IDs with the size of the active orders count.
+Iterates over the active orders and checks each order using the checkOrder function.
+If an order needs to be rebalanced, it adds the order ID to the ordersIds array.
+If an order does not need to be rebalanced, it increments the skipped counter.
+If any orders were skipped, it adjusts the length of the ordersIds array accordingly.
+Finally, it returns the array of order IDs that need to be rebalanced._
+
 #### Return Values
 
 | Name | Type | Description |
@@ -655,7 +668,10 @@ function performUpkeep(bytes performData) external
 
 Performs the upkeep based on the provided performData.
 
-_Requires the performData does contain any order IDs.
+_This function is external and non-reentrant.
+Requires at least one order ID to be provided for execution.
+It decodes the performData to retrieve the order IDs.
+Calls the executeOrders function to execute the specified orders.
 Emits a {OrderExecuted} event for each executed order._
 
 #### Parameters
