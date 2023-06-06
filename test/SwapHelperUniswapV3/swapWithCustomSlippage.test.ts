@@ -51,7 +51,7 @@ describe("Method: swapWithCustomSlippage", () => {
 
       await expect(
         swapHelperContract.swapWithCustomSlippage(ZERO_ADDRESS, WETH9, USDC, amountIn, FEE, SLIPPAGE)
-      ).to.be.revertedWith("SwapHelperV3: beneficiary is zero address");
+      ).to.be.revertedWith("beneficiary is zero address");
     });
 
     it("When slippage is zero", async () => {
@@ -62,7 +62,7 @@ describe("Method: swapWithCustomSlippage", () => {
 
       await expect(
         swapHelperContract.swapWithCustomSlippage(beneficiary.address, WETH9, USDC, amountIn, FEE, 0)
-      ).to.be.revertedWith("SwapHelperV3: zero slippage");
+      ).to.be.revertedWith("zero slippage");
     });
 
     it("When slippage is to hight", async () => {
@@ -80,7 +80,7 @@ describe("Method: swapWithCustomSlippage", () => {
           FEE,
           PRECISION + 1
         )
-      ).to.be.revertedWith("SwapHelperV3: unsafe slippage");
+      ).to.be.revertedWith("unsafe slippage");
     });
 
     it("When tokenIn is zero address", async () => {
@@ -98,7 +98,7 @@ describe("Method: swapWithCustomSlippage", () => {
           FEE,
           SLIPPAGE
         )
-      ).to.be.revertedWith("SwapHelperV3: tokenIn is zero address");
+      ).to.be.revertedWith("tokenIn is zero address");
     });
 
     it("When tokenOut is zero address", async () => {
@@ -116,7 +116,7 @@ describe("Method: swapWithCustomSlippage", () => {
           FEE,
           SLIPPAGE
         )
-      ).to.be.revertedWith("SwapHelperV3: tokenOut is zero address");
+      ).to.be.revertedWith("tokenOut is zero address");
     });
 
     it("When tokenIn amount is zero", async () => {
@@ -127,7 +127,7 @@ describe("Method: swapWithCustomSlippage", () => {
 
       await expect(
         swapHelperContract.swapWithCustomSlippage(beneficiary.address, WETH9, USDC, 0, FEE, SLIPPAGE)
-      ).to.be.revertedWith("SwapHelperV3: amountIn is not positive");
+      ).to.be.revertedWith("amountIn is not positive");
     });
   });
 

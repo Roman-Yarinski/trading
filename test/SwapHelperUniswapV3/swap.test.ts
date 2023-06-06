@@ -50,7 +50,7 @@ describe("Method: swap", () => {
       await swapHelperContract.connect(admin).grantRole(swapperRole, deployer.address);
 
       await expect(swapHelperContract.swap(ZERO_ADDRESS, WETH9, USDC, amountIn, FEE)).to.be.revertedWith(
-        "SwapHelperV3: beneficiary is zero address"
+        "beneficiary is zero address"
       );
     });
 
@@ -62,7 +62,7 @@ describe("Method: swap", () => {
 
       await expect(
         swapHelperContract.swap(beneficiary.address, ZERO_ADDRESS, USDC, amountIn, FEE)
-      ).to.be.revertedWith("SwapHelperV3: tokenIn is zero address");
+      ).to.be.revertedWith("tokenIn is zero address");
     });
 
     it("When tokenOut is zero address", async () => {
@@ -73,7 +73,7 @@ describe("Method: swap", () => {
 
       await expect(
         swapHelperContract.swap(beneficiary.address, WETH9, ZERO_ADDRESS, amountIn, FEE)
-      ).to.be.revertedWith("SwapHelperV3: tokenOut is zero address");
+      ).to.be.revertedWith("tokenOut is zero address");
     });
 
     it("When tokenIn amount is zero", async () => {
@@ -83,7 +83,7 @@ describe("Method: swap", () => {
       await swapHelperContract.connect(admin).grantRole(swapperRole, deployer.address);
 
       await expect(swapHelperContract.swap(beneficiary.address, WETH9, USDC, 0, FEE)).to.be.revertedWith(
-        "SwapHelperV3: amountIn is not positive"
+        "amountIn is not positive"
       );
     });
   });

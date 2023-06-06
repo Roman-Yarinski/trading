@@ -32,13 +32,13 @@ describe("Method: updateSlippage(uint32 value)", () => {
   describe("When one of parameters is incorrect", () => {
     it("When new value equal latest", async () => {
       await expect(swapHelperContract.connect(admin).updateSlippage(SLIPPAGE)).to.be.revertedWith(
-        "SwapHelperV3: new slippage is the same"
+        "new slippage is the same"
       );
     });
 
     it("When caller does not have admin role", async () => {
       await expect(swapHelperContract.connect(notAdmin).updateSlippage(newSlippage)).to.be.revertedWith(
-        "SwapHelperV3: caller does not have role"
+        "caller does not have role"
       );
     });
   });

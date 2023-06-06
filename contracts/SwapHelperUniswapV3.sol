@@ -42,7 +42,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         uint32 secondsAgo
     ) public view override returns (uint256 amountOut) {
         address pool = IUniswapV3Factory(factory).getPool(tokenIn, tokenOut, fee);
-        require(pool != address(0), "SwapHelperV3: pool doesn't exist");
+        require(pool != address(0), "pool doesn't exist");
         uint32[] memory secondsAgos = new uint32[](2);
         secondsAgos[0] = secondsAgo;
         secondsAgos[1] = 0;
@@ -85,9 +85,9 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
      * price for the period
      */
     constructor(address swapRouter_, address factory_, uint256 slippage_, uint32 secondsAgoDefault_) {
-        require(swapRouter_ != address(0), "SwapHelperV3: swapRouter is zero address");
-        require(factory_ != address(0), "SwapHelperV3: factory is zero address");
-        require(slippage_ <= PRECISION, "SwapHelperV3: slippage gt precision");
+        require(swapRouter_ != address(0), "swapRouter is zero address");
+        require(factory_ != address(0), "factory is zero address");
+        require(slippage_ <= PRECISION, "slippage gt precision");
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(ADMIN_ROLE, msg.sender);
         swapRouter = ISwapRouter(swapRouter_);
@@ -106,10 +106,10 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         uint128 amountIn,
         uint24 fee
     ) external override returns (uint256 amountOut) {
-        require(beneficiary != address(0), "SwapHelperV3: beneficiary is zero address");
-        require(tokenIn != address(0), "SwapHelperV3: tokenIn is zero address");
-        require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");
-        require(amountIn > 0, "SwapHelperV3: amountIn is not positive");
+        require(beneficiary != address(0), "beneficiary is zero address");
+        require(tokenIn != address(0), "tokenIn is zero address");
+        require(tokenOut != address(0), "tokenOut is zero address");
+        require(amountIn > 0, "amountIn is not positive");
         IERC20 token = IERC20(tokenIn);
         token.safeTransferFrom(msg.sender, address(this), amountIn);
         token.safeApprove(address(swapRouter), amountIn);
@@ -140,12 +140,12 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
         uint24 fee,
         uint256 slippageForSwap
     ) external override returns (uint256 amountOut) {
-        require(beneficiary != address(0), "SwapHelperV3: beneficiary is zero address");
-        require(tokenIn != address(0), "SwapHelperV3: tokenIn is zero address");
-        require(tokenOut != address(0), "SwapHelperV3: tokenOut is zero address");
-        require(amountIn > 0, "SwapHelperV3: amountIn is not positive");
-        require(slippageForSwap > 0, "SwapHelperV3: zero slippage");
-        require(slippageForSwap < PRECISION, "SwapHelperV3: unsafe slippage");
+        require(beneficiary != address(0), "beneficiary is zero address");
+        require(tokenIn != address(0), "tokenIn is zero address");
+        require(tokenOut != address(0), "tokenOut is zero address");
+        require(amountIn > 0, "amountIn is not positive");
+        require(slippageForSwap > 0, "zero slippage");
+        require(slippageForSwap < PRECISION, "unsafe slippage");
         IERC20 token = IERC20(tokenIn);
         token.safeTransferFrom(msg.sender, address(this), amountIn);
         token.safeApprove(address(swapRouter), amountIn);
@@ -171,7 +171,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
      * @param value Number of seconds
      */
     function updateSecondsAgoDefault(uint32 value) external onlyRole(ADMIN_ROLE) returns (bool) {
-        require(value != _secondsAgoDefault, "SwapHelperV3: new secondsAgoDefault is the same");
+        require(value != _secondsAgoDefault, "secondsAgo is the same");
         _secondsAgoDefault = value;
         emit SecondsAgoDefaultUpdated(value);
         return true;
@@ -182,7 +182,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
      * @param value Number of seconds
      */
     function updateSlippage(uint256 value) external onlyRole(ADMIN_ROLE) returns (bool) {
-        require(value != _slippage, "SwapHelperV3: new slippage is the same");
+        require(value != _slippage, "new slippage is the same");
         _slippage = value;
         emit SlippageUpdated(value);
         return true;
@@ -193,7 +193,7 @@ contract SwapHelperUniswapV3 is ISwapHelperUniswapV3, AccessControl {
      * @param role Role `bytes32` to check availability for user
      */
     modifier onlyRole(bytes32 role) {
-        require(hasRole(role, msg.sender), "SwapHelperV3: caller does not have role");
+        require(hasRole(role, msg.sender), "caller does not have role");
         _;
     }
 }

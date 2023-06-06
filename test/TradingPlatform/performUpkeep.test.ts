@@ -1,6 +1,5 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ZERO_BYTES } from "./../utils/constants";
 import { loadFixture, mine } from "@nomicfoundation/hardhat-network-helpers";
 import {
   Action,

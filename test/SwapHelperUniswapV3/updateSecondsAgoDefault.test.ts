@@ -32,14 +32,14 @@ describe("Method: updateSecondsAgoDefault(uint32 value)", () => {
   describe("When one of parameters is incorrect", () => {
     it("When new value equal latest", async () => {
       await expect(swapHelperContract.connect(admin).updateSecondsAgoDefault(SECONDS_AGO)).to.be.revertedWith(
-        "SwapHelperV3: new secondsAgoDefault is the same"
+        "secondsAgo is the same"
       );
     });
 
     it("When caller does not have admin role", async () => {
       await expect(
         swapHelperContract.connect(notAdmin).updateSecondsAgoDefault(newSecondsAgo)
-      ).to.be.revertedWith("SwapHelperV3: caller does not have role");
+      ).to.be.revertedWith("caller does not have role");
     });
   });
 

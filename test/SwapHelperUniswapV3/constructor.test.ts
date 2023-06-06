@@ -39,19 +39,19 @@ describe("Method: constructor", () => {
     it("When swapRouter is zero address", async () => {
       await expect(
         deploySwapHelper(admin.address, ZERO_ADDRESS, FACTORY, SLIPPAGE, SECONDS_AGO)
-      ).to.be.revertedWith("SwapHelperV3: swapRouter is zero address");
+      ).to.be.revertedWith("swapRouter is zero address");
     });
 
     it("When factory is zero address", async () => {
       await expect(
         deploySwapHelper(admin.address, SWAP_ROUTER, ZERO_ADDRESS, SLIPPAGE, SECONDS_AGO)
-      ).to.be.revertedWith("SwapHelperV3: factory is zero address");
+      ).to.be.revertedWith("factory is zero address");
     });
 
     it("When swapRouter is zero address", async () => {
       await expect(
         deploySwapHelper(admin.address, SWAP_ROUTER, FACTORY, BigNumber.from(PRECISION).add(1), SECONDS_AGO)
-      ).to.be.revertedWith("SwapHelperV3: slippage gt precision");
+      ).to.be.revertedWith("slippage gt precision");
     });
   });
 

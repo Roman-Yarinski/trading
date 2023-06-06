@@ -327,9 +327,9 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
         require(order.baseToken != address(0), "Zero address check");
         require(order.targetToken != address(0), "Zero address check");
         require(order.baseToken != order.targetToken, "Tokens must be different");
-        require(order.baseAmount > 0, "Amount in must be greater than 0");
+        require(order.baseAmount > 0, "Amount in must be gt 0");
         require(order.slippage > 0 && order.slippage < 50000, "Unsafe slippage");
-        if (order.action != Action.DCA) require(order.aimTargetTokenAmount > 0, "Aim amount must be greater than 0");
+        if (order.action != Action.DCA) require(order.aimTargetTokenAmount > 0, "Aim amount must be gt 0");
         if (order.action == Action.PROFIT || order.action == Action.LOSS) {
             require(order.expiration > block.timestamp, "Wrong expiration date");
         }
@@ -337,10 +337,10 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
             tokensWhiteList.contains(order.baseToken) && tokensWhiteList.contains(order.targetToken),
             "Token not allowed"
         );
-        // require(action != Action.LOSS || targetPrice > 0, "Minimum amount out must be greater than 0");
+        // require(action != Action.LOSS || targetPrice > 0, "Minimum amount out must be gt 0");
         // require(
         //     action != Action.TakeProfit || minTargetTokenAmount > 0,
-        //     "Take profit amount out must be greater than 0 for TakeProfit orders"
+        //     "Take profit amount out must be gt 0 for TakeProfit orders"
         // );
         orderCounter.increment();
         uint256 orderId = orderCounter.current();
@@ -426,7 +426,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
      * @dev See {ITradingPlatform}
      */
     function setProtocolFee(uint32 newProtocolFee) external onlyRole(ADMIN_ROLE) {
-        require(newProtocolFee < PRECISION);
+        require(newProtocolFee < PRECISION, "newProtocolFee can't be gt 100%");
         protocolFee = newProtocolFee;
     }
 

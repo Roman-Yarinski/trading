@@ -80,9 +80,7 @@ describe("Method: createOrder", () => {
       const { tradingPlatform, order } = await loadFixture(deployTradingPlatform);
       const wrongOrder = { ...order };
       wrongOrder.baseAmount = 0;
-      await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith(
-        "Amount in must be greater than 0"
-      );
+      await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith("Amount in must be gt 0");
     });
 
     it("When slippage is zero", async () => {
@@ -96,9 +94,7 @@ describe("Method: createOrder", () => {
       const { tradingPlatform, order } = await loadFixture(deployTradingPlatform);
       const wrongOrder = { ...order };
       wrongOrder.aimTargetTokenAmount = 0;
-      await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith(
-        "Aim amount must be greater than 0"
-      );
+      await expect(tradingPlatform.createOrder(wrongOrder)).to.be.revertedWith("Aim amount must be gt 0");
     });
 
     it("When expiration is lt time now", async () => {
