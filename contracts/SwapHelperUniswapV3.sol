@@ -3,15 +3,13 @@
 pragma solidity 0.7.6;
 pragma abicoder v2;
 
-import "./interfaces/ISwapHelperUniswapV3.sol";
-
-import "@openzeppelin/contractsV3/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contractsV3/access/AccessControl.sol";
-
-import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
-import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
-import "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
+import {ISwapHelperUniswapV3} from "./interfaces/ISwapHelperUniswapV3.sol";
+import {SafeERC20, IERC20} from "@openzeppelin/contractsV3/token/ERC20/SafeERC20.sol";
+import {AccessControl} from "@openzeppelin/contractsV3/access/AccessControl.sol";
+import {IUniswapV3Pool} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
+import {IUniswapV3Factory} from "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+import {OracleLibrary} from "@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol";
 
 /**
  * @title The contract implements the token swap functionality through
