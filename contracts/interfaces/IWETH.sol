@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.12;
 
 import {IERC20} from "@openzeppelin/contractsV4/token/ERC20/IERC20.sol";
