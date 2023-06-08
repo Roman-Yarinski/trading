@@ -1,6 +1,25 @@
-# Trading smart contracts
+# TradingPlatform smart contracts
 
-This repository contains code of Trading Smart Contracts.
+This is a **TradingPlatform** smart contracts for [Cexles Finance](https://cexles.finance/) project.
+
+<div>
+
+<a href="https://docs.soliditylang.org/en/v0.8.12/introduction-to-smart-contracts.html">![solidity-version](https://img.shields.io/badge/Solidity-0.8.12-363636?style=for-the-badge&logo=Solidity)</a>
+<a href="https://docs.chain.link/chainlink-automation/introduction">![chainlink-automation](https://img.shields.io/badge/Chainlink-Automation-375BD2?style=for-the-badge&logo=Chainlink)</a>
+
+</div>
+
+<div>
+
+<a href="">![tests](https://img.shields.io/badge/Tests-passing-brightgreen)</a>
+<a href="">![coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)</a>
+<a href="">![license](https://img.shields.io/github/license/cexles/trading-smart-contracts)</a>
+
+</div>
+
+## Documentation
+
+<a href="https://docs.cexles.finance/">![Documentation](https://img.shields.io/badge/GitBook-GitBook-3884FF?style=for-the-badge&logo=GitBook)</a>
 
 ## Setting project
 
@@ -8,6 +27,16 @@ This repository contains code of Trading Smart Contracts.
 
 ```sh
 yarn install
+```
+
+---
+
+### Setup config
+
+Create and fill _default.json_ file.
+
+```sh
+cp config/default.example.json ./config/default.json
 ```
 
 ---
@@ -138,23 +167,23 @@ slither . --triage
 
 ```
 {
-  "INFURA_KEY": "",
-  "DEPLOYER_KEY": "",
-  "ETHERSCAN_API_KEY": "",
-  "POLYGONSCAN_API_KEY": "",
-  "BSCSCAN_API_KEY": "",
+  "INFURA_KEY": "{your_infura_key}",
+  "DEPLOYER_KEY": "{your_key}",
+  "ETHERSCAN_API_KEY": "{your_key}",
+  "POLYGONSCAN_API_KEY": "{your_key}",
+  "BSCSCAN_API_KEY": "{your_key}",
   "GAS_PRICE": 28,
   "NODE": {
     "GAS_PRICE": "auto",
-    "LOGGING": true,
+    "LOGGING": false,
     "FORK": {
-      "FORK_PROVIDER_URI": "",
-      "FORK_ENABLED": false,
+      "FORK_PROVIDER_URI": "https://eth-mainnet.alchemyapi.io/v2/{your_key}",
+      "FORK_ENABLED": true,
       "BLOCK_NUMBER": 17268128
     }
   },
   "GAS_REPORTER": {
-    "ENABLED": false,
+    "ENABLED": true,
     "COINMARKETCAP": "",
     "CURRENCY": "USD",
     "TOKEN": "ETH",
@@ -167,7 +196,7 @@ slither . --triage
     },
     "TRADING_PLATFORM": {
       "ADMIN": null,
-      "SWAP_HELPER": null,
+      "SWAP_HELPER": "0x99CB3439F88dFD1D9c6C4B7141a0696EcEa96ff3",
       "PROTOCOL_FEE": 10000,
       "FEE_RECIPIENT": null
     },
@@ -182,10 +211,6 @@ slither . --triage
       "AUTOMATION_REGISTRAR": "0x57A4a13b35d25EE78e084168aBaC5ad360252467",
       "AUTOMATION_REGISTRY": "0xE16Df59B887e3Caa439E0b29B42bA2e7976FD8b2"
     }
-  },
-  "SCRIPTS": {
-    "OPERATOR_KEY": ""
   }
 }
-
 ```
