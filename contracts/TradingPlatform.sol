@@ -228,7 +228,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
      */
     function shouldRebalance() public view returns (uint256[] memory) {
         //get Active Orders
-        uint256 ordersCount = activeOrders.length(); // TODO: -1 ?
+        uint256 ordersCount = activeOrders.length();
         uint256[] memory ordersIds = new uint256[](ordersCount);
         uint256 skipped = 0;
         for (uint256 i = 0; i < ordersCount; i++) {
@@ -322,7 +322,6 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
      * @dev See {ITradingPlatform}
      */
     function createOrder(Order memory order) external nonReentrant returns (uint256) {
-        // TODO: add checks
         require(order.userAddress == msg.sender, "Wrong user address");
         require(order.baseToken != address(0), "Zero address check");
         require(order.targetToken != address(0), "Zero address check");
@@ -337,11 +336,6 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
             tokensWhiteList.contains(order.baseToken) && tokensWhiteList.contains(order.targetToken),
             "Token not allowed"
         );
-        // require(action != Action.LOSS || targetPrice > 0, "Minimum amount out must be gt 0");
-        // require(
-        //     action != Action.TakeProfit || minTargetTokenAmount > 0,
-        //     "Take profit amount out must be gt 0 for TakeProfit orders"
-        // );
         orderCounter.increment();
         uint256 orderId = orderCounter.current();
         if (order.action == Action.DCA) {
@@ -467,7 +461,6 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
                 if (decodedData.fixingPerStep >= order.baseAmount) {
                     activeOrders.remove(orderId); //update active orders set
                 } else {
-                    // update storage only if this info will be needed in future
                     amountToSwap = decodedData.fixingPerStep;
                 }
             } else if (expectedAmountOut < lastBuyingAmountOut - getPercent(lastBuyingAmountOut, decodedData.step)) {
@@ -494,11 +487,11 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
                     activeOrders.remove(order.boundOrder);
                     balances[boundOrder.userAddress][boundOrder.baseToken] += boundOrder.baseAmount;
                     emit OrderCanceled(order.boundOrder);
-                } // remove all bound orders and refund tokens to user balance
+                } // remove bound orders and refund tokens to user balance
             }
         }
         IERC20(order.baseToken).approve(uniswapHelperV3, amountToSwap);
-        uint256 amountOut = ISwapHelperUniswapV3(uniswapHelperV3).swapWithCustomSlippage( // TODO: add user slippage ?
+        uint256 amountOut = ISwapHelperUniswapV3(uniswapHelperV3).swapWithCustomSlippage(
             address(this),
             order.baseToken,
             order.targetToken,
@@ -508,7 +501,7 @@ contract TradingPlatform is ITradingPlatform, AccessControlEnumerable, Reentranc
         );
         uint256 feeAmount = calculateFee(amountOut, protocolFee);
         if (order.action == Action.LOSS || order.action == Action.PROFIT)
-            require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange"); // TODO: order.minTargetTokenAmount < amountOut - feeAmount ?
+            require(order.minTargetTokenAmount < amountOut - feeAmount, "Unfair exchange");
         balances[feeRecipient][order.targetToken] += feeAmount; // update fee balance
         balances[order.userAddress][order.targetToken] += amountOut - feeAmount; // update user balance
         resultTokenOut[orderId] += amountOut - feeAmount; // save amount that we get from this order execution
