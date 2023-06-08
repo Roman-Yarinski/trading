@@ -23,33 +23,6 @@ async function preparePairAndContracts() {
 }
 
 describe("Method: executeOrders", () => {
-  // describe.only("Calculate data ", () => {
-  //   it("should calculate data for TRAILING", () => {
-  //     const baseAmountForTRAILING = "1000000000000000000000";
-  //     const amountToSpendForPeriod = ethers.utils.parseUnits("100");
-  //     const step = 50000; // 5%
-
-  //     const data = ethers.utils.defaultAbiCoder.encode(
-  //       ["uint128", "uint128", "uint24"],
-  //       [baseAmountForTRAILING, amountToSpendForPeriod, step]
-  //     );
-
-  //     console.log(data);
-  //   });
-
-  //   it("should calculate data for DCA", () => {
-  //     const amountToSpendForPeriod = ethers.utils.parseUnits("1000");
-  //     const period = 604800;
-
-  //     const data = ethers.utils.defaultAbiCoder.encode(
-  //       ["uint128", "uint128"],
-  //       [period, amountToSpendForPeriod]
-  //     );
-
-  //     console.log(data);
-  //   });
-  // });
-
   describe("Orders not exists", () => {
     it("should do nothing", async () => {
       const { tradingPlatform } = await loadFixture(preparePairAndContracts);
