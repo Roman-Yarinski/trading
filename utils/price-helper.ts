@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { BigNumberish } from "ethers";
 import { SqrtPriceMath, encodeSqrtRatioX96 } from "@uniswap/v3-sdk";
 import JSBI from "jsbi";
+import { HardhatEthersHelpers } from "hardhat/types";
 
 export const FACTORY = "0x1F98431c8aD98523631AE4a59f267346ea31F984";
 export const SWAP_ROUTER = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
@@ -10,7 +12,10 @@ export const PAIR_FEE = 500;
 export const SLIPPAGE = 10000; // 1% (100% = 1000000)
 export const PRECISION = 1000000;
 
-export async function getPoolState(poolAddress: string, ethers) {
+export async function getPoolState(
+  poolAddress: string,
+  ethers: typeof import("ethers/lib/ethers") & HardhatEthersHelpers
+) {
   const poolContract = await ethers.getContractAt("IUniswapV3Pool", poolAddress);
   const liquidity = await poolContract.liquidity();
   const slot = await poolContract.slot0();
@@ -33,7 +38,7 @@ export async function calculateAmount0ToSale(
   pairAddress: string,
   newToken0Amount: BigNumberish,
   newToken1Amount: BigNumberish,
-  ethers
+  ethers: typeof import("ethers/lib/ethers") & HardhatEthersHelpers
 ) {
   const poolState = await getPoolState(pairAddress, ethers);
 
@@ -54,7 +59,7 @@ export async function calculateAmount1ToSale(
   pairAddress: string,
   newToken0Amount: BigNumberish,
   newToken1Amount: BigNumberish,
-  ethers
+  ethers: typeof import("ethers/lib/ethers") & HardhatEthersHelpers
 ) {
   const poolState = await getPoolState(pairAddress, ethers);
 
