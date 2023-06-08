@@ -7,15 +7,15 @@
   "GAS_PRICE": 28,
   "NODE": {
     "GAS_PRICE": "auto",
-    "LOGGING": true,
+    "LOGGING": false,
     "FORK": {
-      "FORK_PROVIDER_URI": "",
-      "FORK_ENABLED": false,
+      "FORK_PROVIDER_URI": "https://eth-mainnet.alchemyapi.io/v2/your_key",
+      "FORK_ENABLED": true,
       "BLOCK_NUMBER": 17268128
     }
   },
   "GAS_REPORTER": {
-    "ENABLED": false,
+    "ENABLED": true,
     "COINMARKETCAP": "",
     "CURRENCY": "USD",
     "TOKEN": "ETH",
@@ -28,7 +28,7 @@
     },
     "TRADING_PLATFORM": {
       "ADMIN": null,
-      "SWAP_HELPER": null,
+      "SWAP_HELPER": "0x99CB3439F88dFD1D9c6C4B7141a0696EcEa96ff3",
       "PROTOCOL_FEE": 10000,
       "FEE_RECIPIENT": null
     },
